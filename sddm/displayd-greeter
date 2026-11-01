@@ -1,0 +1,63 @@
+#!/bin/bash
+# SDDM DisplayCommand (root, before the login screen), installed as
+# /usr/local/libexec/displayd-greeter (`just install-greeter`) and named by
+# DisplayCommand= in an /etc/sddm.conf.d drop-in. Runs the stock Xsetup, then:
+# lid closed and an external monitor connected -> laptop panel off, external
+# primary (so the login form is on a screen you can see).
+#
+# It must never cost you the login screen: every step has a timeout, nothing
+# here exits non-zero, and the panel is only turned off once an external
+# output is confirmed active (otherwise the panel is turned back on).
+
+STOCK=${DISPLAYD_GREETER_STOCK:-/usr/share/sddm/scripts/Xsetup}
+LID_GLOB=${DISPLAYD_LID_STATE:-/proc/acpi/button/lid/*/state}
+LOG=${DISPLAYD_GREETER_LOG:-/var/log/displayd-greeter.log}
+
+log() { printf '%s %s\n' "$(date '+%F %T')" "$*" >>"$LOG" 2>/dev/null; }
+
+lid_closed() {
+  local f
+  for f in $LID_GLOB; do
+    [[ -r $f ]] && grep -q closed "$f" && return 0
+  done
+  return 1
+}
+
+arrange() {
+  local query internal=() external=() line name
+  query=$(timeout 5 xrandr --query) || { log "xrandr --query failed"; return 0; }
+  while read -r name state _; do
+    [[ $state == connected ]] || continue
+    case $name in
+      eDP* | LVDS* | DSI*) internal+=("$name") ;;
+      *) external+=("$name") ;;
+    esac
+  done <<<"$query"
+  log "lid $(lid_closed && echo closed || echo open); internal: ${internal[*]:-none}; external: ${external[*]:-none}"
+  ((${#internal[@]} && ${#external[@]})) && lid_closed || return 0
+
+  local args=(xrandr) prev='' out
+  for out in "${external[@]}"; do
+    args+=(--output "$out" --auto)
+    if [[ -z $prev ]]; then args+=(--pos 0x0 --primary); else args+=(--right-of "$prev"); fi
+    prev=$out
+  done
+  for out in "${internal[@]}"; do args+=(--output "$out" --off); done
+  log "run: ${args[*]}"
+  timeout 5 "${args[@]}" >>"$LOG" 2>&1 || log "xrandr failed ($?)"
+
+  # The panel stays off only if an external output now shows something.
+  line=$(timeout 5 xrandr --listactivemonitors 2>/dev/null)
+  for out in "${external[@]}"; do
+    grep -qw -- "$out" <<<"$line" && return 0
+  done
+  log "no external output active; turning ${internal[0]} back on"
+  timeout 5 xrandr --output "${internal[0]}" --auto --primary >>"$LOG" 2>&1
+  return 0
+}
+
+if [[ -x $STOCK ]]; then
+  timeout 10 "$STOCK" || log "$STOCK exited $?"
+fi
+arrange
+exit 0

@@ -1,0 +1,49 @@
+# displayd configuration (~/.config/displayd/config.toml). See `displayd -h`.
+# displayd reads this file and only ever appends to it (menu "Save to
+# config.toml as..." and `displayd save NAME`), so comments stay put.
+
+[general]
+# Laptop panels; empty = auto (outputs named eDP*, LVDS*, DSI*). They count as
+# disconnected while the lid is closed and another monitor is connected.
+internal = []
+# Which output generated layouts make primary: "external" or "internal".
+primary = "external"
+# Placement used when the menu for a new setup is dismissed (not remembered):
+# right, left, above, external, laptop, mirror, left-portrait, right-portrait.
+fallback = "right"
+# Scales the menu offers for external monitors (below 1 = larger UI).
+scales = [1.0, 0.9, 0.8, 0.75, 1.25, 1.5]
+# Shell commands run after every switch, after the profile's own `exec`.
+# They see DISPLAYD_PROFILE, DISPLAYD_PREV, DISPLAYD_SETUP, DISPLAYD_OUTPUTS
+# (enabled ports), DISPLAYD_PRIMARY, DISPLAYD_LID and the profile's env.
+exec = []
+notify = true
+# Seconds of quiet before acting on a burst of hotplug/lid events.
+debounce = 1.0
+# Lid polling interval, used only while acpid is not running.
+lid_poll = 2.0
+
+# Names for monitors in menus and notifications, by fingerprint
+# (`displayd monitors` lists them). Default: the EDID's model name.
+[monitors]
+# "2052c794fda8" = "Desk"
+
+# Profiles. A profile fits when it covers exactly the usable outputs (a closed
+# lid removes the laptop panel). `edid` pins an entry to a monitor on any port;
+# `off = true` lists a monitor that stays off. Keys per output: edid, mode
+# ("WxH", empty = preferred), rate, pos ("XxY"), rotate (normal left right
+# inverted), scale, scale_from ("WxH", for mirroring), primary, off.
+#
+# `env` is written to $XDG_RUNTIME_DIR/displayd/env.sh for shells to source
+# (README: Shell integration); variables set by an earlier profile and not by
+# this one are unset. `exec` runs after the switch.
+#
+# [profiles.desk]
+# exec = ["notify-send desk"]
+# [profiles.desk.env]
+# GDK_DPI_SCALE = "0.9"
+# [profiles.desk.outputs.DP-3]
+# edid = "2052c794fda8"
+# mode = "2560x1440"
+# pos = "0x0"
+# primary = true

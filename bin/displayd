@@ -1,0 +1,176 @@
+#!/usr/bin/env python3
+"""Display layouts for X: apply a remembered layout when monitors or the lid change, rofi menu otherwise.
+
+Usage: displayd daemon | menu | adjust | apply [NAME] [--default] | default [NAME] | save NAME [--default]
+                | status [--json] | list | monitors | reload
+"""
+import argparse
+import json
+import os
+from pathlib import Path
+import signal
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'lib'))
+import core  # noqa: E402
+import layout as lay  # noqa: E402
+import store  # noqa: E402
+
+
+def cmd_status(system, args):
+    setup = system.detect()
+    last = system.state['last']
+    default = system.state['defaults'].get(setup.key)
+    info = {
+        'setup': setup.key, 'lid': setup.lid, 'available': list(setup.available), 'active': setup.active,
+        'profile': last.get('profile'), 'why': last.get('why'), 'default': default,
+        'matching': [lay_.name for lay_, _ in system.matching(setup)],
+        'config': str(system.paths.config_file), 'errors': system.config.errors,
+    }
+    if args.json:
+        print(json.dumps(info, indent=2))
+        return 0
+    print(f'setup     {system.describe(setup)}')
+    print(f'key       {setup.key}')
+    print(f'active    {" ".join(setup.active) or "-"}')
+    print(f'applied   {info["profile"] or "-"}' + (f' ({info["why"]})' if info['why'] else '')
+          + ('' if last.get('setup') == setup.key else '  [for another setup]'))
+    print(f'default   {default or "-"}')
+    print(f'matching  {", ".join(info["matching"]) or "-"}')
+    for err in system.config.errors:
+        print(f'error     {err}')
+    return 1 if system.config.errors else 0
+
+
+def cmd_monitors(system, args):
+    for out in system.detect().outputs:
+        if out.connected:
+            kind = 'internal' if out.internal(system.config.internal) else 'external'
+            mode = out.current_mode
+            print(f'{out.name:<8} {out.fingerprint:<14} {kind:<9} {mode.size if mode else "off":<10} '
+                  f'{system.label(out)}')
+    return 0
+
+
+def cmd_list(system, args):
+    setup = system.detect()
+    default = system.state['defaults'].get(setup.key)
+    fits = {lay_.name for lay_, _ in system.matching(setup)}
+    for name, layout in system.profiles().items():
+        marks = ('*' if name == default else ' ') + ('+' if name in fits else ' ')
+        print(f'{marks} {name}  [{layout.source}]')
+    return 0
+
+
+def _named(system, setup, name):
+    layout = system.profiles().get(name)
+    if layout is None:
+        raise SystemExit(f'displayd: no profile {name!r} (see displayd list)')
+    targets = lay.resolve(layout, setup.available)
+    if targets is None:
+        raise SystemExit(f'displayd: profile {name!r} does not fit what is connected ({setup.key})')
+    return layout, targets
+
+
+def cmd_apply(system, args):
+    if not args.name:
+        result = core.evaluate(system, ['force'], interactive=False)
+        print(result)
+        return 0 if result != 'failed' else 1
+    with store.locked(system.paths.runtime / 'apply.lock'):
+        setup = system.detect()
+        layout, targets = _named(system, setup, args.name)
+        if args.default:
+            system.state['defaults'][setup.key] = layout.name
+        ok = system.apply(layout, targets, setup, 'default' if args.default else 'manual')
+    if ok:
+        system.notify('Display layout', f'Layout: {layout.name}')
+    return 0 if ok else 1
+
+
+def cmd_default(system, args):
+    setup = system.detect()
+    if not args.name:
+        print(system.state['defaults'].get(setup.key) or '-')
+        return 0
+    _named(system, setup, args.name)
+    system.state['defaults'][setup.key] = args.name
+    system.state.save()
+    print(f'default for {setup.key}: {args.name}')
+    return 0
+
+
+def cmd_save(system, args):
+    """Save the live layout (e.g. after tuning it in arandr) as a config.toml profile."""
+    setup = system.detect()
+    try:
+        layout = system.live_layout(setup, args.name)
+        store.append_profile(system.paths, layout)
+    except lay.LayoutError as exc:
+        raise SystemExit(f'displayd: {exc}') from None
+    print(f'saved {args.name!r} to {system.paths.config_file}')
+    if args.default:
+        system.state['defaults'][setup.key] = args.name
+        system.state.save()
+        print(f'default for {setup.key}: {args.name}')
+    return 0
+
+
+def cmd_reload(system, args):
+    try:
+        pid = int((system.paths.runtime / 'daemon.pid').read_text())
+        os.kill(pid, signal.SIGUSR1)
+    except (OSError, ValueError):
+        raise SystemExit('displayd: daemon not running') from None
+    return 0
+
+
+def cmd_daemon(system, args):
+    import daemon
+    return daemon.main(system)
+
+
+def cmd_menu(system, args):
+    import menu
+    print(menu.run(system, new=args.new))
+    return 0
+
+
+def cmd_adjust(system, args):
+    import menu
+    print(menu.adjust(system))
+    return 0
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(prog='displayd', description=__doc__.splitlines()[0])
+    parser.add_argument('-v', '--verbose', action='store_true', help='echo log lines to stdout')
+    sub = parser.add_subparsers(dest='command', required=True)
+    sub.add_parser('daemon', help='watch hotplug, lid and resume (started by i3)')
+    p = sub.add_parser('menu', help='rofi menu for the connected displays')
+    p.add_argument('--new', action='store_true', help='dismissing applies the fallback layout')
+    sub.add_parser('adjust', help='rofi menu: resolution and scale of one output in the layout on screen')
+    p = sub.add_parser('apply', help='apply NAME, or what the daemon would choose')
+    p.add_argument('name', nargs='?')
+    p.add_argument('--default', action='store_true', help='also make NAME the default for this setup')
+    p = sub.add_parser('default', help='show or set the default profile for this setup')
+    p.add_argument('name', nargs='?')
+    p = sub.add_parser('save', help='save the live layout as a config.toml profile')
+    p.add_argument('name')
+    p.add_argument('--default', action='store_true')
+    p = sub.add_parser('status', help='setup, applied and default profile')
+    p.add_argument('--json', action='store_true')
+    sub.add_parser('list', help='profiles (* default, + fits this setup)')
+    sub.add_parser('monitors', help='connected monitors with fingerprints')
+    sub.add_parser('reload', help='make the daemon re-apply now')
+    args = parser.parse_args(argv)
+    system = core.System(echo=args.verbose or args.command == 'daemon' and sys.stdout.isatty())
+    try:
+        return globals()[f'cmd_{args.command}'](system, args)
+    except RuntimeError as exc:
+        print(f'displayd: {exc}', file=sys.stderr)
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())
