@@ -66,6 +66,7 @@ class System:
         self.run = run
         self.spawn = spawn or self._spawn
         self.log = log or store.Log(self.paths, echo)
+        self._pending = None   # the 'setup|layout' pair a confirm notification is waiting on
         self.reload()
 
     def reload(self):
@@ -248,6 +249,99 @@ class System:
             self.log(f'rescue: enabling {port}')
             self.run(['xrandr', '--output', port, '--auto', '--primary'], capture_output=True, timeout=20)
 
+    # -- rescue and confirm ---------------------------------------------
+    def laptop_only(self, setup, why='rescue'):
+        """Laptop panel alone, held for SETUP: hotplug noise from the same monitors does not undo it."""
+        if not setup.internal:
+            return False
+        layout, targets = self.preset_layout(setup, 'laptop' if setup.externals else 'single',
+                                             name='Laptop only (rescue)')
+        ok = self.apply(layout, targets, setup, why)
+        if ok:
+            self.state['hold'] = setup.key
+            self.state.save()
+            self.log(f'hold: {setup.key} stays on the laptop panel until the monitors change or apply')
+        return ok
+
+    def needs_confirm(self, layout, targets, setup):
+        """True when LAYOUT turns the open laptop panel off and was never kept for this setup."""
+        try:
+            seconds = float(self.config.confirm)
+        except (TypeError, ValueError):
+            seconds = 0
+        if seconds <= 0 or setup.lid != 'open' or not setup.internal:
+            return False
+        cfg = targets.get(setup.internal)
+        if cfg is not None and not cfg.off:
+            return False
+        return f'{setup.key}|{layout.name}' not in self.state['confirmed']
+
+    def confirm(self, layout, setup, lines):
+        """Ask in the background whether to keep LAYOUT; no answer in time goes back to the laptop panel."""
+        pair = f'{setup.key}|{layout.name}'
+        if self._pending == pair:
+            return
+        self._pending = pair
+        threading.Thread(target=self._confirm, args=(pair, setup.key, layout.name, lines), daemon=True).start()
+
+    def _confirm(self, pair, key, name, lines):
+        try:
+            seconds = float(self.config.confirm)
+            body = '\n'.join(lines + [f'Layout: {name}', f'Back to the laptop panel in {seconds:g}s unless kept'])
+            self.settle(pair, key, name, self.ask_keep('Keep this display layout?', body, seconds))
+        except Exception as exc:  # a thread must not die silently
+            self.log(f'confirm failed: {exc!r}')
+        finally:
+            self._pending = None
+
+    def ask_keep(self, summary, body, seconds):
+        """True when kept: the Keep button, the notification closed by hand, or no way to ask.
+
+        False when nobody answered within SECONDS: the screen showing it is probably dark.
+        """
+        if not self.config.notify:
+            return True
+        ms = str(int((seconds + 5) * 1000))
+        helper = shutil.which('notify-send.py')
+        if helper:
+            # no --replaces-process: a later notification must not close this one and count as an answer
+            cmd = [helper, '-a', 'displayd', '-u', 'critical', '-t', ms, '-i', 'video-display',
+                   '--action', 'keep:Keep']
+        elif shutil.which('notify-send'):
+            cmd = ['notify-send', '-a', 'displayd', '-u', 'critical', '-t', ms, '-i', 'video-display',
+                   '-A', 'keep=Keep']
+        else:
+            self.log('confirm: no notify-send; keeping the layout')
+            return True
+        try:
+            subprocess.run(cmd + [summary, body], capture_output=True, text=True, timeout=seconds)
+        except subprocess.TimeoutExpired:
+            return False
+        except OSError as exc:
+            self.log(f'confirm: {exc}; keeping the layout')
+        return True
+
+    def settle(self, pair, key, name, kept):
+        """Remember a kept layout, or go back to the laptop panel if NAME is still on screen for KEY."""
+        with store.locked(self.paths.runtime / 'apply.lock'):
+            self.reload()
+            if kept:
+                if pair not in self.state['confirmed']:
+                    self.state['confirmed'] = self.state['confirmed'] + [pair]
+                    self.state.save()
+                self.log(f'confirm: kept {name!r} for {key}')
+                return 'kept'
+            setup = self.detect()
+            last = self.state['last']
+            if setup.key != key or last.get('setup') != key or last.get('profile') != name:
+                self.log(f'confirm: no answer, but {name!r} is no longer on screen; leaving it')
+                return 'stale'
+            self.log(f'confirm: no answer for {name!r}; back to the laptop panel')
+            ok = self.laptop_only(setup)
+            self.notify('Display layout reverted',
+                        f'{name} was not kept.\nRun `displayd apply` to try it again.', urgency='critical')
+            return 'reverted' if ok else 'failed'
+
     def _spawn(self, cmd, env=None):
         try:
             with open(self.paths.log_file, 'a') as log:
@@ -297,6 +391,14 @@ def evaluate(system, reasons=(), interactive=True, open_menu=None):
         if not setup.available:
             system.log('no connected outputs; leaving the screen alone')
             return 'none'
+        hold = system.state['hold']
+        if hold and ('force' in reasons or hold != setup.key):
+            system.state['hold'] = ''
+            system.state.save()
+            system.log(f'hold released: {"forced" if "force" in reasons else "monitors changed"}')
+        elif hold:
+            system.log(f'held on the laptop panel ({", ".join(reasons) or "check"}): {setup.key}')
+            return 'held'
         last = system.state['last']
         if ('force' not in reasons and last.get('setup') == setup.key and last.get('lid') == setup.lid
                 and last.get('enabled') == setup.active):
@@ -312,7 +414,9 @@ def evaluate(system, reasons=(), interactive=True, open_menu=None):
             layout, targets = system.fallback(setup)
             why = 'fallback'
         ok = system.apply(layout, targets, setup, why)
-        if ok:
+        if ok and system.needs_confirm(layout, targets, setup):
+            system.confirm(layout, setup, changes)
+        elif ok:
             body = '\n'.join(changes + [f'Layout: {layout.name} ({why})'])
             system.notify('Display changed' if changes else 'Display layout', body, change=True)
         return why if ok else 'failed'

@@ -22,6 +22,11 @@ notify = true
 debounce = 1.0
 # Lid polling interval, used only while acpid is not running.
 lid_poll = 2.0
+# When the daemon turns the laptop panel off with the lid open, a notification
+# asks to keep the layout; with no answer in this many seconds it goes back to
+# the laptop panel (`displayd rescue`). Asked once per monitor set and layout.
+# 0 = never ask.
+confirm = 15
 
 # Names for monitors in menus and notifications, by fingerprint
 # (`displayd monitors` lists them). Default: the EDID's model name.

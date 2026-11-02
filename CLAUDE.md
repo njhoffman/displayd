@@ -31,7 +31,11 @@ Guidance for Claude Code in this repository.
 
 - Standard library only (Python 3.11+, `tomllib`); no installs needed.
 - A failed xrandr turns one display back on (`System.rescue`); the screen is
-  never left dark.
+  never left dark. xrandr cannot see a monitor that takes the mode and shows
+  nothing, so a layout that turns the open laptop panel off is confirmed
+  (`System.confirm`, a thread; `settle` under the apply lock) and reverts to
+  `System.laptop_only` without an answer. `state.hold` keeps a rescued setup
+  on the panel until its key changes or a `force` evaluate.
 - `config.toml` is only appended to (menu "Save to config.toml"); config
   profiles are never rewritten. Menu-made layouts live in the state file.
 - The env file is rewritten atomically on every switch; its comment lines

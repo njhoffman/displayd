@@ -126,10 +126,19 @@ class FakeX:
 class TestSystem(core.System):
     def __init__(self, *a, **kw):
         self.notes, self.spawned = [], []
+        self.pending, self.answer = [], True   # confirm requests; what ask_keep answers
         super().__init__(*a, spawn=lambda cmd, env=None: self.spawned.append((cmd, env)), **kw)
 
     def notify(self, summary, body='', urgency='normal', change=False):
         self.notes.append((summary, body, urgency, change))
+
+    def confirm(self, layout, setup, lines):
+        # the real one asks in a thread; tests run _confirm themselves once evaluate is done
+        self.pending.append((f'{setup.key}|{layout.name}', setup.key, layout.name, lines))
+
+    def ask_keep(self, summary, body, seconds):
+        self.notes.append((summary, body, 'critical', False))
+        return self.answer
 
 
 class Case(unittest.TestCase):
@@ -419,6 +428,109 @@ class Evaluate(Case):
         sysm = self.system('not = [toml')
         self.assertTrue(sysm.config.errors)
         self.assertEqual(core.evaluate(sysm, ['start']), 'only display')
+
+
+DOCKED = '''
+[general]
+confirm = {confirm}
+
+[profiles.laptop.outputs.eDP-1]
+mode = "1920x1080"
+primary = true
+
+[profiles.docked.outputs.eDP-1]
+off = true
+[profiles.docked.outputs.DP-3]
+edid = "{fp}"
+primary = true
+'''
+
+
+class Rescue(Case):
+    """A layout that turns the open laptop panel off is confirmed; no answer goes back to the panel."""
+
+    def docked(self, confirm=15):
+        fp = xrandr.Output('x', True, edid=DELL).fingerprint
+        sysm = self.system(DOCKED.replace('{fp}', fp).replace('{confirm}', str(confirm)))
+        self.x.plug('DP-3', DELL, DELL_MODES)
+        return sysm
+
+    def test_no_answer_goes_back_to_the_laptop_and_holds(self):
+        sysm = self.docked()
+        sysm.answer = False
+        self.assertEqual(core.evaluate(sysm, ['hotplug']), 'profile')
+        self.assertEqual(set(self.x.active()), {'DP-3'})
+        self.assertEqual(len(sysm.pending), 1)
+        self.assertNotIn('Display changed', [n[0] for n in sysm.notes])  # the question replaces it
+        key = sysm.state['last']['setup']
+        sysm._confirm(*sysm.pending[0])
+        self.assertEqual(set(self.x.active()), {'eDP-1'})
+        self.assertEqual(sysm.state['hold'], key)
+        self.assertEqual(sysm.notes[-1][:3], ('Display layout reverted',
+                                              'docked was not kept.\nRun `displayd apply` to try it again.',
+                                              'critical'))
+        # a flaky monitor re-sending hotplug does not switch back
+        before = len(self.x.commands)
+        self.assertEqual(core.evaluate(sysm, ['hotplug']), 'held')
+        self.assertEqual(len(self.x.commands), before)
+        # unplugging releases the hold; plugging in again asks again (never kept)
+        self.x.unplug('DP-3')
+        self.assertEqual(core.evaluate(sysm, ['hotplug']), 'profile')
+        self.assertEqual(sysm.state['hold'], '')
+        self.x.plug('DP-3', DELL, DELL_MODES)
+        core.evaluate(sysm, ['hotplug'])
+        self.assertEqual(len(sysm.pending), 2)
+
+    def test_kept_layout_is_not_asked_again(self):
+        sysm = self.docked()
+        core.evaluate(sysm, ['hotplug'])
+        sysm._confirm(*sysm.pending[0])
+        self.assertEqual(set(self.x.active()), {'DP-3'})
+        self.assertEqual(sysm.state['confirmed'], [sysm.pending[0][0]])
+        self.x.unplug('DP-3')
+        core.evaluate(sysm, ['hotplug'])
+        self.x.plug('DP-3', DELL, DELL_MODES)
+        self.assertEqual(core.evaluate(sysm, ['hotplug']), 'profile')
+        self.assertEqual(len(sysm.pending), 1)
+        self.assertEqual(sysm.notes[-1][0], 'Display changed')
+
+    def test_late_answer_for_a_layout_no_longer_on_screen_does_nothing(self):
+        sysm = self.docked()
+        core.evaluate(sysm, ['hotplug'])
+        pair, key, name, _ = sysm.pending[0]
+        self.x.unplug('DP-3')
+        core.evaluate(sysm, ['hotplug'])
+        before = len(self.x.commands)
+        self.assertEqual(sysm.settle(pair, key, name, False), 'stale')
+        self.assertEqual(len(self.x.commands), before)
+        self.assertEqual(sysm.state['hold'], '')
+
+    def test_not_asked_with_the_lid_closed_or_confirm_off(self):
+        sysm = self.docked(confirm=0)
+        core.evaluate(sysm, ['hotplug'])
+        self.assertEqual(sysm.pending, [])
+        self.x.unplug('DP-3')
+        sysm = self.docked()
+        self.close_lid()
+        # closed lid: the panel is not available, so the layout leaves nothing visible off
+        core.evaluate(sysm, ['lid'])
+        self.assertEqual(sysm.pending, [])
+
+    def test_rescue_and_force(self):
+        sysm = self.docked()
+        sysm.state['confirmed'] = []
+        core.evaluate(sysm, ['hotplug'])
+        setup = sysm.detect()
+        self.assertTrue(sysm.laptop_only(setup))
+        self.assertEqual(set(self.x.active()), {'eDP-1'})
+        self.assertEqual(core.evaluate(sysm, ['lid']), 'held')
+        # `displayd apply` (force) releases the hold and applies what the daemon would
+        self.assertEqual(core.evaluate(sysm, ['force']), 'profile')
+        self.assertEqual(set(self.x.active()), {'DP-3'})
+        self.assertEqual(sysm.state['hold'], '')
+        # nothing to go back to with the lid closed
+        self.close_lid()
+        self.assertFalse(sysm.laptop_only(sysm.detect()))
 
 
 class FakeRofi:

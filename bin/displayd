@@ -2,7 +2,7 @@
 """Display layouts for X: apply a remembered layout when monitors or the lid change, rofi menu otherwise.
 
 Usage: displayd daemon | menu | adjust | apply [NAME] [--default] | default [NAME] | save NAME [--default]
-                | status [--json] | list | monitors | reload
+                | rescue | status [--json] | list | monitors | reload
 """
 import argparse
 import json
@@ -24,6 +24,7 @@ def cmd_status(system, args):
     info = {
         'setup': setup.key, 'lid': setup.lid, 'available': list(setup.available), 'active': setup.active,
         'profile': last.get('profile'), 'why': last.get('why'), 'default': default,
+        'hold': system.state['hold'] == setup.key,
         'matching': [lay_.name for lay_, _ in system.matching(setup)],
         'config': str(system.paths.config_file), 'errors': system.config.errors,
     }
@@ -36,6 +37,8 @@ def cmd_status(system, args):
     print(f'applied   {info["profile"] or "-"}' + (f' ({info["why"]})' if info['why'] else '')
           + ('' if last.get('setup') == setup.key else '  [for another setup]'))
     print(f'default   {default or "-"}')
+    if info['hold']:
+        print('hold      laptop panel only, until the monitors change or `displayd apply`')
     print(f'matching  {", ".join(info["matching"]) or "-"}')
     for err in system.config.errors:
         print(f'error     {err}')
@@ -82,9 +85,23 @@ def cmd_apply(system, args):
         layout, targets = _named(system, setup, args.name)
         if args.default:
             system.state['defaults'][setup.key] = layout.name
+        system.state['hold'] = ''
         ok = system.apply(layout, targets, setup, 'default' if args.default else 'manual')
     if ok:
         system.notify('Display layout', f'Layout: {layout.name}')
+    return 0 if ok else 1
+
+
+def cmd_rescue(system, args):
+    """Laptop panel alone, held until the monitors change or `displayd apply` (for a dark external screen)."""
+    with store.locked(system.paths.runtime / 'apply.lock'):
+        system.reload()
+        setup = system.detect()
+        if not setup.internal:
+            raise SystemExit('displayd: no laptop panel to go back to (none connected, or the lid is closed)')
+        ok = system.laptop_only(setup)
+    if ok:
+        system.notify('Display layout', 'Laptop panel only, until the monitors change or `displayd apply`')
     return 0 if ok else 1
 
 
@@ -153,6 +170,7 @@ def main(argv=None):
     p = sub.add_parser('apply', help='apply NAME, or what the daemon would choose')
     p.add_argument('name', nargs='?')
     p.add_argument('--default', action='store_true', help='also make NAME the default for this setup')
+    sub.add_parser('rescue', help='laptop panel only, held until the monitors change or apply (bind to a key)')
     p = sub.add_parser('default', help='show or set the default profile for this setup')
     p.add_argument('name', nargs='?')
     p = sub.add_parser('save', help='save the live layout as a config.toml profile')

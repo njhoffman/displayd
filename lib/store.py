@@ -61,6 +61,7 @@ class Config:
     notify: bool = True
     debounce: float = 1.0
     lid_poll: float = 2.0
+    confirm: float = 15.0                          # seconds to keep a layout that turns the open laptop off
     monitors: dict = field(default_factory=dict)   # fingerprint -> label
     profiles: dict = field(default_factory=dict)   # name -> Layout, file order
     errors: list = field(default_factory=list)
@@ -77,7 +78,8 @@ def load_config(paths):
         cfg.errors.append(f'{paths.config_file}: {exc}')
         return cfg
     general = data.get('general') or {}
-    for key in ('internal', 'primary', 'fallback', 'scales', 'exec', 'notify', 'debounce', 'lid_poll'):
+    for key in ('internal', 'primary', 'fallback', 'scales', 'exec', 'notify', 'debounce', 'lid_poll',
+                'confirm'):
         if key in general:
             setattr(cfg, key, general[key])
     if isinstance(cfg.exec, str):
@@ -109,11 +111,12 @@ def append_profile(paths, layout):
 
 
 class State:
-    """defaults: setup key -> profile name; layouts: menu-made layouts; last: what was applied."""
+    """defaults: setup key -> profile name; layouts: menu-made layouts; last: what was applied;
+    confirmed: 'setup|layout' pairs kept when asked; hold: setup key kept on the laptop panel by a rescue."""
 
     def __init__(self, paths):
         self.paths = paths
-        self.data = {'defaults': {}, 'layouts': {}, 'env_keys': [], 'last': {}}
+        self.data = {'defaults': {}, 'layouts': {}, 'env_keys': [], 'last': {}, 'confirmed': [], 'hold': ''}
         try:
             loaded = json.loads(paths.state_file.read_text())
             if isinstance(loaded, dict):

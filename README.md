@@ -16,6 +16,14 @@ suspend:
 - Closing the lid with a monitor connected turns the laptop panel off;
   opening it, or unplugging the monitor, turns it back on.
 - Every switch shows a notification with a **Change layout** button.
+- A layout that turns the laptop panel off while the lid is open asks
+  **Keep this display layout?** the first time it is used for a set of
+  monitors. With no answer within `general.confirm` seconds (15; 0 = never
+  ask) the external screen is presumably dark, and displayd goes back to the
+  laptop panel.
+- `displayd rescue` (bind it to a key, it works blind) turns the laptop panel
+  on alone and holds it there: hotplug events from a flaky monitor or dock do
+  not switch away until the set of monitors changes or `displayd apply` runs.
 - `displayd adjust` changes the resolution and scale of one monitor in the
   layout on screen, once or as the default; the other monitors move so the
   screens still touch and keep their alignment (centred, start or end).
@@ -28,6 +36,7 @@ displayd default NAME            # make NAME the default for what is connected
 displayd apply [NAME]            # apply NAME, or what the daemon would choose
 displayd save NAME --default     # keep the live layout (e.g. tuned in arandr)
 displayd menu | adjust           # the rofi menus
+displayd rescue                  # laptop panel only, held until the monitors change
 ```
 
 Requires Python 3.11+ (standard library only), xrandr, udevadm and rofi;
@@ -45,7 +54,8 @@ i3:
 ```
 exec --no-startup-id ~/.local/bin/displayd daemon
 bindsym $mod+Shift+d --release exec --no-startup-id ~/.local/bin/displayd menu
-bindsym $mod+Shift+o --release exec --no-startup-id ~/.local/bin/displayd adjust
+bindsym $mod+Escape --release exec --no-startup-id ~/.local/bin/displayd adjust
+bindsym $mod+Shift+Escape --release exec --no-startup-id ~/.local/bin/displayd rescue
 ```
 
 Config `~/.config/displayd/config.toml`, state and log in

@@ -5,6 +5,17 @@ versions follow [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-02
+
+### Added
+
+- `displayd rescue`: the laptop panel alone, held there until the set of monitors changes or `displayd apply`
+  runs, so a monitor or dock that keeps re-sending hotplug events cannot switch back to a dark screen. Meant for a
+  key binding (the README binds it to `$mod+Shift+Escape`, next to `adjust` on `$mod+Escape`). `displayd status` shows the hold.
+- Confirm-or-revert: when the daemon turns the laptop panel off with the lid open, a **Keep this display
+  layout?** notification asks once per set of monitors and layout; with no answer in `general.confirm` seconds
+  (default 15, 0 turns it off) it goes back to the laptop panel. Closing the notification counts as keeping it.
+
 ## [0.1.0] - 2026-11-01
 
 First release on its own, extracted from njhoffman/.shell (`scripts/tools/displayd/`), where it
