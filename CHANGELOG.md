@@ -5,6 +5,14 @@ versions follow [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-02
+
+### Changed
+
+- The keep-or-revert question is off by default (`general.confirm = 0`): answering it takes a mouse click, and
+  a missed one reverted a working monitor. Set `confirm = 15` to turn it on; `displayd rescue` on a key covers
+  a dark screen without it.
+
 ## [0.4.0] - 2026-11-02
 
 ### Added

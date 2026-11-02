@@ -61,7 +61,7 @@ class Config:
     notify: bool = True
     debounce: float = 1.0
     lid_poll: float = 2.0
-    confirm: float = 15.0                          # seconds to keep a layout that turns the open laptop off
+    confirm: float = 0.0                           # seconds to keep a layout that turns the open laptop off; 0 = never ask
     monitors: dict = field(default_factory=dict)   # fingerprint -> label
     profiles: dict = field(default_factory=dict)   # name -> Layout, file order
     errors: list = field(default_factory=list)

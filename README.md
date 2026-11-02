@@ -16,11 +16,11 @@ suspend:
 - Closing the lid with a monitor connected turns the laptop panel off;
   opening it, or unplugging the monitor, turns it back on.
 - Every switch shows a notification with a **Change layout** button.
-- A layout that turns the laptop panel off while the lid is open asks
-  **Keep this display layout?** the first time it is used for a set of
-  monitors. With no answer within `general.confirm` seconds (15; 0 = never
-  ask) the external screen is presumably dark, and displayd goes back to the
-  laptop panel.
+- Optionally (`general.confirm = 15`; off by default, it needs a mouse click),
+  a layout that turns the laptop panel off while the lid is open asks **Keep
+  this display layout?** the first time it is used for a set of monitors.
+  With no answer within that many seconds the external screen is presumably
+  dark, and displayd goes back to the laptop panel.
 - `displayd rescue` (bind it to a key, it works blind) turns the laptop panel
   on alone and holds it there: hotplug events from a flaky monitor or dock do
   not switch away until the set of monitors changes or `displayd apply` runs.

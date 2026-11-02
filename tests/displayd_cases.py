@@ -508,6 +508,7 @@ class Rescue(Case):
         self.assertEqual(sysm.state['hold'], '')
 
     def test_not_asked_with_the_lid_closed_or_confirm_off(self):
+        self.assertEqual(store.Config().confirm, 0)   # off unless the config asks for it
         sysm = self.docked(confirm=0)
         core.evaluate(sysm, ['hotplug'])
         self.assertEqual(sysm.pending, [])
