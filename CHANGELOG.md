@@ -5,6 +5,16 @@ versions follow [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-02
+
+### Fixed
+
+- With `notify-send.py`, the keep-or-revert question never waited: `--action` takes any number of values, so it
+  swallowed the summary and body, the command failed at once, and the failure counted as **Keep** (and was
+  remembered). The action now goes after the text. A notifier that fails now keeps the layout without
+  remembering it as kept; only the Keep button or closing the notification by hand counts as an answer.
+- The **Change layout** button on switch notifications never appeared with `notify-send.py`, for the same reason.
+
 ## [0.3.0] - 2026-11-02
 
 ### Added

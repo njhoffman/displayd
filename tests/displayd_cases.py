@@ -516,6 +516,42 @@ class Rescue(Case):
         core.evaluate(sysm, ['lid'])
         self.assertEqual(sysm.pending, [])
 
+    def test_failed_notifier_keeps_without_remembering(self):
+        sysm = self.docked()
+        sysm.answer = None
+        core.evaluate(sysm, ['hotplug'])
+        sysm._confirm(*sysm.pending[0])
+        self.assertEqual(set(self.x.active()), {'DP-3'})
+        self.assertEqual(sysm.state['confirmed'], [])
+        self.assertEqual(sysm.state['hold'], '')
+
+    def test_real_ask_keep_and_notify_command(self):
+        """The command notify-send.py gets, and how its outcome is read (the tests above stub ask_keep)."""
+        sysm = self.docked()
+        which, run = core.shutil.which, core.subprocess.run
+        calls, outcome = [], {}
+
+        def fake_run(cmd, **kw):
+            calls.append(cmd)
+            if outcome.get('timeout'):
+                raise subprocess.TimeoutExpired(cmd, kw.get('timeout'))
+            return subprocess.CompletedProcess(cmd, outcome.get('rc', 0), '', 'usage: ...')
+        core.shutil.which = lambda name: '/bin/notify-send.py' if name == 'notify-send.py' else None
+        core.subprocess.run = fake_run
+        try:
+            self.assertTrue(core.System.ask_keep(sysm, 'Keep?', 'body', 15))
+            # --action takes any number of values: it must come after the summary and body
+            self.assertEqual(calls[-1][-4:], ['Keep?', 'body', '--action', 'keep:Keep'])
+            self.assertNotIn('--replaces-process', calls[-1])
+            outcome['timeout'] = True
+            self.assertFalse(core.System.ask_keep(sysm, 'Keep?', 'body', 15))
+            outcome.update(timeout=False, rc=2)
+            self.assertIsNone(core.System.ask_keep(sysm, 'Keep?', 'body', 15))
+            cmd = sysm.notify_cmd('Display changed', 'b', action=('change', 'Change layout'))
+            self.assertEqual(cmd[-4:], ['Display changed', 'b', '--action', 'change:Change layout'])
+        finally:
+            core.shutil.which, core.subprocess.run = which, run
+
     def test_rescue_and_force(self):
         sysm = self.docked()
         sysm.state['confirmed'] = []

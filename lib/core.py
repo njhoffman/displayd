@@ -288,37 +288,34 @@ class System:
         try:
             seconds = float(self.config.confirm)
             body = '\n'.join(lines + [f'Layout: {name}', f'Back to the laptop panel in {seconds:g}s unless kept'])
-            self.settle(pair, key, name, self.ask_keep('Keep this display layout?', body, seconds))
+            answer = self.ask_keep('Keep this display layout?', body, seconds)
+            if answer is None:
+                self.log(f'confirm: could not ask; keeping {name!r} without remembering it')
+                return
+            self.settle(pair, key, name, answer)
         except Exception as exc:  # a thread must not die silently
             self.log(f'confirm failed: {exc!r}')
         finally:
             self._pending = None
 
     def ask_keep(self, summary, body, seconds):
-        """True when kept: the Keep button, the notification closed by hand, or no way to ask.
-
-        False when nobody answered within SECONDS: the screen showing it is probably dark.
-        """
+        """True when kept (the Keep button, or the notification closed by hand: someone saw it); False when
+        nobody answered within SECONDS (the screen showing it is probably dark); None when it could not ask."""
         if not self.config.notify:
-            return True
-        ms = str(int((seconds + 5) * 1000))
-        helper = shutil.which('notify-send.py')
-        if helper:
-            # no --replaces-process: a later notification must not close this one and count as an answer
-            cmd = [helper, '-a', 'displayd', '-u', 'critical', '-t', ms, '-i', 'video-display',
-                   '--action', 'keep:Keep']
-        elif shutil.which('notify-send'):
-            cmd = ['notify-send', '-a', 'displayd', '-u', 'critical', '-t', ms, '-i', 'video-display',
-                   '-A', 'keep=Keep']
-        else:
-            self.log('confirm: no notify-send; keeping the layout')
-            return True
+            return None
+        cmd = self.notify_cmd(summary, body, 'critical', int((seconds + 5) * 1000), ('keep', 'Keep'), False)
+        if not cmd:
+            return None
         try:
-            subprocess.run(cmd + [summary, body], capture_output=True, text=True, timeout=seconds)
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=seconds)
         except subprocess.TimeoutExpired:
             return False
         except OSError as exc:
-            self.log(f'confirm: {exc}; keeping the layout')
+            self.log(f'confirm: {exc}')
+            return None
+        if proc.returncode != 0:
+            self.log(f'confirm: {cmd[0]} exited {proc.returncode}: {(proc.stderr or "").strip()[:200]}')
+            return None
         return True
 
     def settle(self, pair, key, name, kept):
@@ -352,23 +349,35 @@ class System:
             return None
 
     # -- notifications --------------------------------------------------
+    def notify_cmd(self, summary, body, urgency='normal', timeout_ms=8000, action=None, replace=True):
+        """The notify-send(.py) command, or None without one. ACTION: (key, label) for a button.
+
+        notify-send.py's --action takes any number of values, so it goes after SUMMARY and BODY; before them it
+        swallows both and the command fails at once.
+        """
+        helper = shutil.which('notify-send.py')
+        if helper:
+            cmd = [helper, '-a', 'displayd', '-u', urgency, '-t', str(timeout_ms), '-i', 'video-display']
+            if replace:
+                cmd += ['--replaces-process', 'displayd']
+            cmd += [summary, body]
+            if action:
+                cmd += ['--action', f'{action[0]}:{action[1]}']
+            return cmd
+        if shutil.which('notify-send'):
+            cmd = ['notify-send', '-a', 'displayd', '-u', urgency, '-t', str(timeout_ms), '-i', 'video-display']
+            if action:
+                cmd += ['-A', f'{action[0]}={action[1]}']
+            return cmd + [summary, body]
+        return None
+
     def notify(self, summary, body='', urgency='normal', change=False):
         """Desktop notification; with CHANGE a 'Change layout' button opens the menu."""
         if not self.config.notify:
             return
-        helper = shutil.which('notify-send.py')
-        if helper:
-            cmd = [helper, '-a', 'displayd', '-u', urgency, '-t', '8000',
-                   '--replaces-process', 'displayd', '-i', 'video-display']
-            if change:
-                cmd += ['--action', 'change:Change layout']
-        elif shutil.which('notify-send'):
-            cmd = ['notify-send', '-a', 'displayd', '-u', urgency, '-t', '8000', '-i', 'video-display']
-            if change:
-                cmd += ['-A', 'change=Change layout']
-        else:
+        cmd = self.notify_cmd(summary, body, urgency, action=('change', 'Change layout') if change else None)
+        if not cmd:
             return
-        cmd += [summary, body]
         if not change:
             self.spawn(cmd)
             return
