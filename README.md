@@ -24,8 +24,8 @@ suspend:
 - `displayd rescue` (bind it to a key, it works blind) turns the laptop panel
   on alone and holds it there: hotplug events from a flaky monitor or dock do
   not switch away until the set of monitors changes or `displayd apply` runs.
-- `displayd adjust` changes the resolution and scale of one monitor in the
-  layout on screen, once or as the default; the other monitors move so the
+- `displayd adjust` (also the main menu's last entry, **Adjust a monitor**)
+  changes the resolution and scale of one monitor in the layout on screen, once or as the default; the other monitors move so the
   screens still touch and keep their alignment (centred, start or end).
 
 ```sh
@@ -53,8 +53,7 @@ i3:
 
 ```
 exec --no-startup-id ~/.local/bin/displayd daemon
-bindsym $mod+Shift+d --release exec --no-startup-id ~/.local/bin/displayd menu
-bindsym $mod+Escape --release exec --no-startup-id ~/.local/bin/displayd adjust
+bindsym $mod+Escape --release exec --no-startup-id ~/.local/bin/displayd menu
 bindsym $mod+Shift+Escape --release exec --no-startup-id ~/.local/bin/displayd rescue
 ```
 

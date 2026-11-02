@@ -5,6 +5,17 @@ versions follow [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-02
+
+### Added
+
+- The main menu's last entry, **Adjust a monitor: resolution and scale**, opens `displayd adjust`, so one key
+  reaches both. Left out of the menu the daemon opens for a new set of monitors (nothing to adjust yet).
+
+### Changed
+
+- README: the i3 example binds the menu to `$mod+Escape` and drops the separate adjust key.
+
 ## [0.2.0] - 2026-11-02
 
 ### Added

@@ -1,5 +1,6 @@
-"""rofi menus. run: pick a saved profile or build one from a placement, mode and scale; adjust: change
-the resolution and scale of one output in the layout on screen. Both end in use once or make default."""
+"""rofi menus. run: pick a saved profile or build one from a placement, mode and scale, or go to adjust;
+adjust: change the resolution and scale of one output in the layout on screen. Both end in use once or make
+default."""
 import html
 import subprocess
 
@@ -19,6 +20,9 @@ PRESET_ICONS = {
     'mirror': 'mirror', 'left-portrait': 'portrait', 'right-portrait': 'portrait', 'single': 'monitor',
     'row': 'columns', 'row-reverse': 'columns',
 }
+
+
+ADJUST_ENTRY = 'Adjust a monitor: resolution and scale'
 
 
 class Rofi:
@@ -103,9 +107,16 @@ def run(system, rofi=None, new=False):
     icons = ['default' if lay_.name == default else 'config' if lay_.source == 'config' else 'saved'
              for lay_, _ in matches]
     icons += [PRESET_ICONS.get(key, 'monitor') for key, _, _ in presets]
+    # adjust works on the layout on screen; a setup nobody chose a layout for yet has none worth adjusting
+    can_adjust = not new and bool(setup.active)
+    if can_adjust:
+        entries.append(ADJUST_ENTRY)
+        icons.append('mode')
     choice = rofi.pick('display', entries, mesg, 0, icons)
     if choice is None:
         return dismissed()
+    if can_adjust and choice == len(entries) - 1:
+        return adjust(system, rofi)
 
     if choice < len(matches):
         layout, _ = matches[choice]

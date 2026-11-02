@@ -603,6 +603,20 @@ class Menu(Case):
         self.assertEqual(self.x.commands, [])
 
 
+    def test_adjust_from_the_main_menu(self):
+        sysm = self.system()
+        self.x.plug('DP-3', DELL, DELL_MODES)
+        menu.run(sysm, FakeRofi('New: Right of laptop', '2560x1440', '1  ', 'Use once'))
+        rofi = FakeRofi(menu.ADJUST_ENTRY, 1, '1920x1080', '1  ', 'Use once')   # output 1: the Dell
+        self.assertEqual(menu.run(sysm, rofi), 'once')
+        self.assertEqual([p for p, _ in rofi.prompts], ['display', 'output', 'mode DP-3', 'scale', 'apply'])
+        self.assertEqual(rofi.prompts[0][1][-1], menu.ADJUST_ENTRY)
+        self.assertEqual(self.x.active()['DP-3'], (1920, 1080, 1920, 0))
+        # not offered for a setup that has no layout chosen yet (the daemon's --new menu)
+        rofi = FakeRofi(None)
+        menu.run(sysm, rofi, new=True)
+        self.assertNotIn(menu.ADJUST_ENTRY, rofi.prompts[0][1])
+
     def test_entries_carry_icons(self):
         sysm = self.system()
         self.x.plug('DP-3', DELL, DELL_MODES)
