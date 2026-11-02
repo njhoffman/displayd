@@ -23,14 +23,15 @@ class Daemon:
         self.events = queue.Queue()
         self.menu = None
         self.menu_setup = None
+        self.udev = None
 
     # -- event sources --------------------------------------------------
     def watch_udev(self):
         """drm change events; polls connector status files when udevadm is unusable."""
         while True:
             try:
-                proc = subprocess.Popen(['udevadm', 'monitor', '--udev', '--subsystem-match=drm'],
-                                        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+                proc = self.udev = subprocess.Popen(['udevadm', 'monitor', '--udev', '--subsystem-match=drm'],
+                                                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
             except OSError as exc:
                 self.log(f'udevadm unavailable ({exc}); polling {DRM_STATUS}')
                 self.poll_drm()
@@ -106,6 +107,13 @@ class Daemon:
                 self.events.put('resume')
             last = now
 
+    def exit(self):
+        """SIGTERM: stop udevadm too (it would linger until the next drm event), then exit."""
+        self.log('stopped (SIGTERM)')
+        if self.udev and self.udev.poll() is None:
+            self.udev.terminate()
+        os._exit(0)
+
     # -- loop -----------------------------------------------------------
     def open_menu(self, setup):
         if self.menu and self.menu.poll() is None:
@@ -116,7 +124,7 @@ class Daemon:
 
     def run(self):
         signal.signal(signal.SIGUSR1, lambda *_: self.events.put('force'))
-        signal.signal(signal.SIGTERM, lambda *_: os._exit(0))
+        signal.signal(signal.SIGTERM, lambda *_: self.exit())
         for target in (self.watch_udev, self.watch_lid, self.watch_resume):
             threading.Thread(target=target, daemon=True).start()
         self.events.put('start')
@@ -139,6 +147,47 @@ class Daemon:
                 self.log(f'{sorted(reasons)} -> {result}')
             except Exception as exc:  # keep the daemon alive through xrandr hiccups
                 self.log(f'evaluate failed: {exc!r}')
+
+
+def running(paths):
+    """The daemon's pid while it runs (0 when its pid file is unreadable), else None."""
+    with store.locked(paths.runtime / 'daemon.lock', blocking=False) as got:
+        if got:
+            return None
+    try:
+        return int((paths.runtime / 'daemon.pid').read_text())
+    except (OSError, ValueError):
+        return 0
+
+
+def _wait(paths, up, seconds=3.0):
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        if (running(paths) is not None) == up:
+            return True
+        time.sleep(0.1)
+    return False
+
+
+def start(system):
+    """Start the daemon in its own session. False when it was already running or did not come up."""
+    if running(system.paths) is not None:
+        return False
+    system.spawn([str(core.DISPLAYD), 'daemon'])
+    return _wait(system.paths, True)
+
+
+def stop(system):
+    """SIGTERM the daemon. False when it was not running or did not stop."""
+    pid = running(system.paths)
+    if not pid:
+        return False
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except OSError as exc:
+        system.log(f'stop: {exc}')
+        return False
+    return _wait(system.paths, False)
 
 
 def main(system):

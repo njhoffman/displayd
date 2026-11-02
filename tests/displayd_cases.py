@@ -8,7 +8,9 @@ import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'lib'))
+import contextlib  # noqa: E402
 import core  # noqa: E402
+import daemon  # noqa: E402
 import layout as lay  # noqa: E402
 import menu  # noqa: E402
 import store  # noqa: E402
@@ -646,12 +648,58 @@ class Menu(Case):
         rofi = FakeRofi(menu.ADJUST_ENTRY, 1, '1920x1080', '1  ', 'Use once')   # output 1: the Dell
         self.assertEqual(menu.run(sysm, rofi), 'once')
         self.assertEqual([p for p, _ in rofi.prompts], ['display', 'output', 'mode DP-3', 'scale', 'apply'])
-        self.assertEqual(rofi.prompts[0][1][-1], menu.ADJUST_ENTRY)
+        self.assertEqual(rofi.prompts[0][1][-2], menu.ADJUST_ENTRY)   # then enable/disable displayd
         self.assertEqual(self.x.active()['DP-3'], (1920, 1080, 1920, 0))
         # not offered for a setup that has no layout chosen yet (the daemon's --new menu)
         rofi = FakeRofi(None)
         menu.run(sysm, rofi, new=True)
         self.assertNotIn(menu.ADJUST_ENTRY, rofi.prompts[0][1])
+
+    def test_daemon_running_start_stop(self):
+        sysm = self.system()
+        self.assertIsNone(daemon.running(self.paths))
+        self.assertFalse(daemon.stop(sysm))
+        held = contextlib.ExitStack()
+        # start: the "daemon" comes up by taking its lock
+        sysm.spawn = lambda cmd, env=None: (sysm.spawned.append((cmd, env)),
+                                            held.enter_context(store.locked(self.paths.runtime / 'daemon.lock')))
+        self.assertTrue(daemon.start(sysm))
+        self.assertEqual(sysm.spawned[-1][0], [str(core.DISPLAYD), 'daemon'])
+        (self.paths.runtime / 'daemon.pid').write_text('4242\n')
+        self.assertEqual(daemon.running(self.paths), 4242)
+        self.assertFalse(daemon.start(sysm))                       # already running: nothing spawned
+        self.assertEqual(len(sysm.spawned), 1)
+        killed = []
+        kill = daemon.os.kill
+        daemon.os.kill = lambda pid, sig: (killed.append((pid, sig)), held.close())
+        try:
+            self.assertTrue(daemon.stop(sysm))
+        finally:
+            daemon.os.kill = kill
+        self.assertEqual(killed, [(4242, daemon.signal.SIGTERM)])
+        self.assertIsNone(daemon.running(self.paths))
+
+    def test_menu_enables_and_disables_the_daemon(self):
+        sysm = self.system()
+        self.x.plug('DP-3', DELL, DELL_MODES)
+        saved = daemon.running, daemon.start, daemon.stop
+        try:
+            daemon.running, daemon.stop = (lambda paths: 7), (lambda system: True)
+            rofi = FakeRofi(menu.DISABLE_ENTRY)
+            self.assertEqual(menu.run(sysm, rofi), 'disabled')
+            self.assertNotIn(menu.ENABLE_ENTRY, rofi.prompts[0][1])
+            self.assertEqual(sysm.notes[-1][0], 'displayd disabled')
+            daemon.running, daemon.start = (lambda paths: None), (lambda system: False)
+            rofi = FakeRofi(menu.ENABLE_ENTRY)
+            self.assertEqual(menu.run(sysm, rofi), 'failed')
+            self.assertEqual(sysm.notes[-1][:3][0::2], ('displayd did not start', 'critical'))
+            self.assertEqual(self.x.commands, [])
+            # the daemon's own menu for a new setup offers neither
+            rofi = FakeRofi(None)
+            menu.run(sysm, rofi, new=True)
+            self.assertFalse({menu.ENABLE_ENTRY, menu.DISABLE_ENTRY} & set(rofi.prompts[0][1]))
+        finally:
+            daemon.running, daemon.start, daemon.stop = saved
 
     def test_entries_carry_icons(self):
         sysm = self.system()

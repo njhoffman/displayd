@@ -4,6 +4,7 @@ default."""
 import html
 import subprocess
 
+import daemon
 import layout as lay
 import store
 
@@ -14,6 +15,7 @@ ICONS = {
     'mirror': '\uf24d', 'portrait': '\uf10b', 'columns': '\uf0db', 'off': '\uf011',
     'default': '\uf005', 'saved': '\uf0c7', 'config': '\uf1de', 'mode': '\uf065',
     'larger': '\uf00e', 'smaller': '\uf010', 'native': '\uf00c', 'once': '\uf00c', 'save': '\uf0c7',
+    'start': '\uf04b',
 }
 PRESET_ICONS = {
     'right': 'right', 'left': 'left', 'above': 'up', 'external': 'monitor', 'laptop': 'laptop',
@@ -23,6 +25,8 @@ PRESET_ICONS = {
 
 
 ADJUST_ENTRY = 'Adjust a monitor: resolution and scale'
+DISABLE_ENTRY = 'Disable displayd (stop the daemon until enabled or the next login)'
+ENABLE_ENTRY = 'Enable displayd (start the daemon)'
 
 
 class Rofi:
@@ -112,11 +116,18 @@ def run(system, rofi=None, new=False):
     if can_adjust:
         entries.append(ADJUST_ENTRY)
         icons.append('mode')
+    # the daemon's own --new menu leaves it alone
+    is_running = None if new else daemon.running(system.paths) is not None
+    if is_running is not None:
+        entries.append(DISABLE_ENTRY if is_running else ENABLE_ENTRY)
+        icons.append('off' if is_running else 'start')
     choice = rofi.pick('display', entries, mesg, 0, icons)
     if choice is None:
         return dismissed()
-    if can_adjust and choice == len(entries) - 1:
+    if entries[choice] == ADJUST_ENTRY:
         return adjust(system, rofi)
+    if entries[choice] in (DISABLE_ENTRY, ENABLE_ENTRY):
+        return toggle_daemon(system, is_running)
 
     if choice < len(matches):
         layout, _ = matches[choice]
@@ -183,6 +194,21 @@ def run(system, rofi=None, new=False):
     if ok:
         system.notify('Display layout', f'Layout: {layout.name} ({why})')
     return why if ok else 'failed'
+
+
+def toggle_daemon(system, is_running):
+    """Stop the running daemon, or start a stopped one; a notification says which."""
+    if is_running:
+        ok = daemon.stop(system)
+        system.notify('displayd disabled' if ok else 'displayd did not stop',
+                      'Monitors and the lid are not watched until enabled again (menu or `displayd start`) '
+                      'or the next login' if ok else 'See `displayd status`', urgency='normal' if ok else 'critical')
+        return 'disabled' if ok else 'failed'
+    ok = daemon.start(system)
+    system.notify('displayd enabled' if ok else 'displayd did not start',
+                  'Watching monitors and the lid' if ok else f'See {system.paths.log_file}',
+                  urgency='normal' if ok else 'critical')
+    return 'enabled' if ok else 'failed'
 
 
 def _adjusted_name(system, base, setup, layout):

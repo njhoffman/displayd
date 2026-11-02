@@ -2,7 +2,7 @@
 """Display layouts for X: apply a remembered layout when monitors or the lid change, rofi menu otherwise.
 
 Usage: displayd daemon | menu | adjust | apply [NAME] [--default] | default [NAME] | save NAME [--default]
-                | rescue | status [--json] | list | monitors | reload
+                | rescue | start | stop | status [--json] | list | monitors | reload
 """
 import argparse
 import json
@@ -37,6 +37,8 @@ def cmd_status(system, args):
     print(f'applied   {info["profile"] or "-"}' + (f' ({info["why"]})' if info['why'] else '')
           + ('' if last.get('setup') == setup.key else '  [for another setup]'))
     print(f'default   {default or "-"}')
+    import daemon
+    print(f'daemon    {"running" if daemon.running(system.paths) is not None else "stopped"}')
     if info['hold']:
         print('hold      laptop panel only, until the monitors change or `displayd apply`')
     print(f'matching  {", ".join(info["matching"]) or "-"}')
@@ -142,6 +144,28 @@ def cmd_reload(system, args):
     return 0
 
 
+def cmd_start(system, args):
+    import daemon
+    if daemon.running(system.paths) is not None:
+        print('displayd: daemon already running')
+        return 0
+    if not daemon.start(system):
+        raise SystemExit(f'displayd: daemon did not start; see {system.paths.log_file}')
+    print('started')
+    return 0
+
+
+def cmd_stop(system, args):
+    import daemon
+    if daemon.running(system.paths) is None:
+        print('displayd: daemon not running')
+        return 0
+    if not daemon.stop(system):
+        raise SystemExit('displayd: daemon did not stop')
+    print('stopped')
+    return 0
+
+
 def cmd_daemon(system, args):
     import daemon
     return daemon.main(system)
@@ -181,6 +205,8 @@ def main(argv=None):
     sub.add_parser('list', help='profiles (* default, + fits this setup)')
     sub.add_parser('monitors', help='connected monitors with fingerprints')
     sub.add_parser('reload', help='make the daemon re-apply now')
+    sub.add_parser('start', help='start the daemon in the background (no-op when running)')
+    sub.add_parser('stop', help='stop the daemon until start, or the next login')
     args = parser.parse_args(argv)
     system = core.System(echo=args.verbose or args.command == 'daemon' and sys.stdout.isatty())
     try:

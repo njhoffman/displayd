@@ -5,6 +5,18 @@ versions follow [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-02
+
+### Added
+
+- `displayd stop` / `displayd start`, and the main menu's last entry: **Disable displayd** while the daemon
+  runs, **Enable displayd** while it does not. Stopping lasts until it is started again or the next login (the
+  window manager starts the daemon). `displayd status` shows whether the daemon runs.
+
+### Fixed
+
+- A stopped daemon (SIGTERM) left its `udevadm monitor` running until the next drm event; it is stopped too now.
+
 ## [0.3.1] - 2026-11-02
 
 ### Fixed

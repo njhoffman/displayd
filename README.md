@@ -24,7 +24,10 @@ suspend:
 - `displayd rescue` (bind it to a key, it works blind) turns the laptop panel
   on alone and holds it there: hotplug events from a flaky monitor or dock do
   not switch away until the set of monitors changes or `displayd apply` runs.
-- `displayd adjust` (also the main menu's last entry, **Adjust a monitor**)
+- The main menu also stops the daemon (**Disable displayd**) while it runs, or
+  starts it (**Enable displayd**) while it does not; stopped, nothing follows
+  hotplug or the lid until it is enabled again or the next login.
+- `displayd adjust` (also a main menu entry, **Adjust a monitor**)
   changes the resolution and scale of one monitor in the layout on screen, once or as the default; the other monitors move so the
   screens still touch and keep their alignment (centred, start or end).
 
@@ -37,6 +40,7 @@ displayd apply [NAME]            # apply NAME, or what the daemon would choose
 displayd save NAME --default     # keep the live layout (e.g. tuned in arandr)
 displayd menu | adjust           # the rofi menus
 displayd rescue                  # laptop panel only, held until the monitors change
+displayd stop | start            # stop the daemon (until start or the next login) / start it again
 ```
 
 Requires Python 3.11+ (standard library only), xrandr, udevadm and rofi;
