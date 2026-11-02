@@ -33,8 +33,7 @@ Reviewed: 2026-11-02
 
 ## 2. Packaging and docs
 
-- [ ] **Add a LICENSE.** (p2) [chore] The repo is meant to be public; pick a
-  license before publishing.
+- [x] **Add a LICENSE.** (p2) [chore] MIT, 2026-11-02.
 - [ ] **Screenshots of the menus in the README.** (p3) [docs] The rofi
   placement and adjust menus.
 - [ ] **CI.** (p3) [test] Run `just test` and `just lint` on push (GitHub

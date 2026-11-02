@@ -113,3 +113,7 @@ Its log is `/var/log/displayd-greeter.log`.
 
 `just test`: the Python cases (`tests/displayd_cases.py`) against a fake X
 and stub rofi, and the greeter against a stub xrandr (`tests/displayd.bats`).
+
+## License
+
+MIT, see [LICENSE](LICENSE).
