@@ -1,5 +1,8 @@
 """displayd: xrandr parsing, layout matching and placement, choosing, applying, menu, against a fake X."""
 from dataclasses import replace
+import argparse
+import importlib.machinery
+import importlib.util
 import os
 from pathlib import Path
 import subprocess
@@ -15,6 +18,10 @@ import layout as lay  # noqa: E402
 import menu  # noqa: E402
 import store  # noqa: E402
 import xrandr  # noqa: E402
+
+_loader = importlib.machinery.SourceFileLoader('displayd_cli', str(Path(__file__).resolve().parent.parent / 'bin' / 'displayd'))
+cli = importlib.util.module_from_spec(importlib.util.spec_from_loader(_loader.name, _loader))
+_loader.exec_module(cli)
 
 
 def edid(vendor='DEL', name='U2719D', product=0x4123, serial=1):
@@ -507,6 +514,54 @@ class LidWait(Case):
         sysm.clock = lambda: 0.0
         self.close_lid()
         self.assertEqual(core.evaluate(sysm, ['start']), 'only display')
+
+
+
+class Cli(Case):
+    """CLI commands that write state reload it under the apply lock, so the daemon's writes survive."""
+
+    def setup_desk(self):
+        fp = xrandr.Output('x', True, edid=DELL).fingerprint
+        sysm = self.system(CONFIG.replace('{fp}', fp))
+        self.x.plug('DP-3', DELL, DELL_MODES)
+        self.close_lid()   # DP-3 alone: 'desk' fits
+        return sysm
+
+    def quiet(self, fn, *a):
+        with open(os.devnull, 'w') as null, contextlib.redirect_stdout(null):
+            return fn(*a)
+
+    def daemon_writes(self):
+        other = TestSystem(self.paths, run=self.x)
+        other.state['confirmed'] = ['k|written-by-daemon']
+        other.state.save()
+
+    def kept(self):
+        return 'k|written-by-daemon' in store.State(self.paths)['confirmed']
+
+    def test_apply_name_keeps_what_the_daemon_wrote(self):
+        sysm = self.setup_desk()
+        self.daemon_writes()
+        self.assertEqual(cli.cmd_apply(sysm, argparse.Namespace(name='desk', default=True)), 0)
+        self.assertTrue(self.kept())
+        self.assertEqual(store.State(self.paths)['last']['profile'], 'desk')
+
+    def test_default_keeps_what_the_daemon_wrote(self):
+        sysm = self.setup_desk()
+        self.daemon_writes()
+        self.assertEqual(self.quiet(cli.cmd_default, sysm, argparse.Namespace(name='desk')), 0)
+        state = store.State(self.paths)
+        self.assertTrue(self.kept())
+        self.assertIn('desk', state['defaults'].values())
+
+    def test_save_default_keeps_what_the_daemon_wrote(self):
+        sysm = self.setup_desk()
+        core.evaluate(sysm, ['lid'])   # something live to save
+        self.daemon_writes()
+        self.assertEqual(self.quiet(cli.cmd_save, sysm, argparse.Namespace(name='live', default=True)), 0)
+        state = store.State(self.paths)
+        self.assertTrue(self.kept())
+        self.assertIn('live', state['defaults'].values())
 
 
 DOCKED = '''

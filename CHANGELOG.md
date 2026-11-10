@@ -5,6 +5,14 @@ versions follow [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-11-10
+
+### Fixed
+
+- `displayd apply NAME`, `displayd default NAME` and `displayd save NAME --default` could undo what the daemon
+  had just saved (a kept layout, a rescue hold, a default): they wrote back the state they read when they
+  started. They now re-read it under the apply lock before writing.
+
 ## [0.6.2] - 2026-11-10
 
 ### Added

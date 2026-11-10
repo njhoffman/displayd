@@ -46,7 +46,7 @@ Reviewed: 2026-11-10
   daemon runs; the pid file is never removed on exit, so after `displayd stop`
   or a crash a reused pid gets SIGUSR1, whose default action kills it. Use
   `daemon.running(paths)` (the lock check) like `start`/`stop` do, and test it.
-- [ ] **`default`, `save` and `apply NAME` write stale state.** (p3) [bug]
+- [x] **`default`, `save` and `apply NAME` write stale state.** (p3) [bug]
   `cmd_default` / `cmd_save --default` save `state.json` without
   `apply.lock`; a daemon `evaluate` that reloaded state just before and saves
   just after drops the new default. `cmd_apply NAME` takes the lock but never

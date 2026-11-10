@@ -81,6 +81,7 @@ def cmd_apply(system, args):
         print(result)
         return 0 if result != 'failed' else 1
     with store.locked(system.paths.runtime / 'apply.lock'):
+        system.reload()   # the daemon may have saved state since this command read it
         setup = system.detect()
         layout, targets = _named(system, setup, args.name)
         if args.default:
@@ -110,9 +111,12 @@ def cmd_default(system, args):
     if not args.name:
         print(system.state['defaults'].get(setup.key) or '-')
         return 0
-    _named(system, setup, args.name)
-    system.state['defaults'][setup.key] = args.name
-    system.state.save()
+    with store.locked(system.paths.runtime / 'apply.lock'):
+        system.reload()
+        setup = system.detect()
+        _named(system, setup, args.name)
+        system.state['defaults'][setup.key] = args.name
+        system.state.save()
     print(f'default for {setup.key}: {args.name}')
     return 0
 
@@ -127,8 +131,10 @@ def cmd_save(system, args):
         raise SystemExit(f'displayd: {exc}') from None
     print(f'saved {args.name!r} to {system.paths.config_file}')
     if args.default:
-        system.state['defaults'][setup.key] = args.name
-        system.state.save()
+        with store.locked(system.paths.runtime / 'apply.lock'):
+            system.reload()
+            system.state['defaults'][setup.key] = args.name
+            system.state.save()
         print(f'default for {setup.key}: {args.name}')
     return 0
 
