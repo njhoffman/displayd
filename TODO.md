@@ -58,7 +58,7 @@ Reviewed: 2026-11-10
   `udevadm` cannot be started; one that starts and exits at once (no netlink
   access, a broken install) is restarted every 5s forever and no hotplug is
   ever seen. Fall back to `poll_drm` after a few quick exits in a row.
-- [ ] **The /tmp runtime fallback trusts whoever made the directory.** (p3)
+- [x] **The /tmp runtime fallback trusts whoever made the directory.** (p3)
   [bug] Without `XDG_RUNTIME_DIR`, `store.Paths` uses
   `/tmp/displayd-$UID/displayd`; `mkdir(exist_ok=True, mode=0o700)` neither
   sets the mode nor checks the owner of an existing directory, and shells

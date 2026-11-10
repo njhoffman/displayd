@@ -226,6 +226,41 @@ class Detect(Case):
         self.assertEqual(core.read_lid(), 'open')
 
 
+
+class RuntimeDir(Case):
+    """Without XDG_RUNTIME_DIR the runtime directory goes in /tmp, and must be this user's alone."""
+
+    def setUp(self):
+        super().setUp()
+        self.dir = Path(self.tmp.name) / f'displayd-{os.getuid()}'
+
+    def fallback(self):
+        saved = {k: os.environ.pop(k, None) for k in ('XDG_RUNTIME_DIR', 'DISPLAYD_RUNTIME_DIR')}
+        tmp, store.TMP = store.TMP, self.tmp.name
+        try:
+            return store.Paths(self.paths.config, self.paths.state)
+        finally:
+            store.TMP = tmp
+            os.environ.update({k: v for k, v in saved.items() if v is not None})
+
+    def test_created_private(self):
+        paths = self.fallback()
+        self.assertEqual(paths.runtime, self.dir / 'displayd')
+        self.assertEqual(self.dir.stat().st_mode & 0o777, 0o700)
+        self.assertEqual(self.fallback().runtime, paths.runtime)   # an existing private one is fine
+
+    def test_open_or_symlinked_directory_is_refused(self):
+        self.dir.mkdir(mode=0o700)
+        self.dir.chmod(0o777)
+        with self.assertRaisesRegex(RuntimeError, 'not a private directory.*mode 777'):
+            self.fallback()
+        self.dir.rmdir()
+        target = Path(self.tmp.name) / 'elsewhere'
+        target.mkdir(mode=0o700)
+        self.dir.symlink_to(target)
+        with self.assertRaisesRegex(RuntimeError, 'symlink'):
+            self.fallback()
+
 class Layouts(Case):
     def available(self):
         self.x.plug('DP-3', DELL, DELL_MODES)

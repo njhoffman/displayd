@@ -5,6 +5,15 @@ versions follow [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.5] - 2026-11-10
+
+### Fixed
+
+- Without `XDG_RUNTIME_DIR`, the runtime directory (`/tmp/displayd-$UID`, which holds the `env.sh` shells source)
+  was used even when another user had created it first, or it was a symlink or open to others. It is now created
+  0700, and displayd refuses to run with an error naming the directory when an existing one is not private to
+  you. Sessions started by logind always set `XDG_RUNTIME_DIR` and are not affected.
+
 ## [0.6.4] - 2026-11-10
 
 ### Fixed

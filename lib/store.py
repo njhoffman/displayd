@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import shlex
+import stat
 import time
 import tomllib
 
@@ -14,6 +15,27 @@ from layout import LayoutError, from_dict, to_toml
 
 def _dir(var, fallback):
     return Path(os.environ.get(var) or Path.home() / fallback)
+
+
+TMP = '/tmp'   # parent of the runtime directory when XDG_RUNTIME_DIR is unset
+
+
+def private_dir(path):
+    """PATH as a directory only this user can use, created 0700 if missing.
+
+    Shells eval the env file written below it, so a directory another user created first (in a world-writable
+    parent like /tmp), a symlink, or one others can write to is refused rather than used or repaired.
+    """
+    try:
+        path.mkdir(mode=0o700)
+    except FileExistsError:
+        pass
+    st = os.lstat(path)
+    if not stat.S_ISDIR(st.st_mode) or st.st_uid != os.getuid() or st.st_mode & 0o077:
+        raise RuntimeError(f'{path} is not a private directory of this user (owner uid {st.st_uid}, mode '
+                           f'{stat.S_IMODE(st.st_mode):o}{", symlink" if stat.S_ISLNK(st.st_mode) else ""}); '
+                           'remove it or set XDG_RUNTIME_DIR')
+    return path
 
 
 @dataclass
@@ -27,9 +49,15 @@ class Paths:
         self.config = self.config or (Path(root) if root else _dir('XDG_CONFIG_HOME', '.config') / 'displayd')
         root = os.environ.get('DISPLAYD_STATE_DIR')
         self.state = self.state or (Path(root) if root else _dir('XDG_STATE_HOME', '.local/state') / 'displayd')
-        root = os.environ.get('DISPLAYD_RUNTIME_DIR')
-        runtime = os.environ.get('XDG_RUNTIME_DIR') or f'/tmp/displayd-{os.getuid()}'
-        self.runtime = self.runtime or (Path(root) if root else Path(runtime) / 'displayd')
+        if self.runtime is None:
+            root = os.environ.get('DISPLAYD_RUNTIME_DIR')
+            xdg = os.environ.get('XDG_RUNTIME_DIR')
+            if root:
+                self.runtime = Path(root)
+            elif xdg:
+                self.runtime = Path(xdg) / 'displayd'
+            else:
+                self.runtime = private_dir(Path(TMP) / f'displayd-{os.getuid()}') / 'displayd'
 
     @property
     def config_file(self):

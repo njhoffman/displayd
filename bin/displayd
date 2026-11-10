@@ -210,8 +210,8 @@ def main(argv=None):
     sub.add_parser('start', help='start the daemon in the background (no-op when running)')
     sub.add_parser('stop', help='stop the daemon until start, or the next login')
     args = parser.parse_args(argv)
-    system = core.System(echo=args.verbose or args.command == 'daemon' and sys.stdout.isatty())
     try:
+        system = core.System(echo=args.verbose or args.command == 'daemon' and sys.stdout.isatty())
         return globals()[f'cmd_{args.command}'](system, args)
     except RuntimeError as exc:
         print(f'displayd: {exc}', file=sys.stderr)
