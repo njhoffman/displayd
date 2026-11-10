@@ -46,11 +46,25 @@ Reviewed: 2026-11-10
   daemon runs; the pid file is never removed on exit, so after `displayd stop`
   or a crash a reused pid gets SIGUSR1, whose default action kills it. Use
   `daemon.running(paths)` (the lock check) like `start`/`stop` do, and test it.
-- [ ] **`default` and `save` write state outside the apply lock.** (p3) [bug]
+- [ ] **`default`, `save` and `apply NAME` write stale state.** (p3) [bug]
   `cmd_default` / `cmd_save --default` save `state.json` without
   `apply.lock`; a daemon `evaluate` that reloaded state just before and saves
-  just after drops the new default. Take the lock and `reload()` first, as
-  `cmd_rescue` does.
+  just after drops the new default. `cmd_apply NAME` takes the lock but never
+  `reload()`s, so it saves the state read when the command started, losing
+  anything the daemon wrote meanwhile (`confirmed`, `hold`, labels). Take the
+  lock and `reload()` first in all three, as `cmd_rescue` does.
+- [ ] **A udevadm that keeps failing means no hotplug at all.** (p3) [bug]
+  `Daemon.watch_udev` falls back to polling `/sys/class/drm` only when
+  `udevadm` cannot be started; one that starts and exits at once (no netlink
+  access, a broken install) is restarted every 5s forever and no hotplug is
+  ever seen. Fall back to `poll_drm` after a few quick exits in a row.
+- [ ] **The /tmp runtime fallback trusts whoever made the directory.** (p3)
+  [bug] Without `XDG_RUNTIME_DIR`, `store.Paths` uses
+  `/tmp/displayd-$UID/displayd`; `mkdir(exist_ok=True, mode=0o700)` neither
+  sets the mode nor checks the owner of an existing directory, and shells
+  `eval` the `env.sh` written there. Another local user who creates it first
+  gets code run in your shells. Check owner and mode (or refuse) before
+  writing; logind sessions always set `XDG_RUNTIME_DIR`, so this is rare.
 
 ## 2. Packaging and docs
 
