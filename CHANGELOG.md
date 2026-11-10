@@ -5,6 +5,13 @@ versions follow [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-11-10
+
+### Fixed
+
+- `displayd reload` sent SIGUSR1 to whatever pid the daemon's pid file named, even after the daemon had stopped;
+  a process that reused that pid was killed. It now signals only a running daemon (the one holding its lock).
+
 ## [0.6.0] - 2026-11-10
 
 ### Changed

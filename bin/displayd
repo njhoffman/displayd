@@ -6,9 +6,7 @@ Usage: displayd daemon | menu | adjust | apply [NAME] [--default] | default [NAM
 """
 import argparse
 import json
-import os
 from pathlib import Path
-import signal
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'lib'))
@@ -136,11 +134,9 @@ def cmd_save(system, args):
 
 
 def cmd_reload(system, args):
-    try:
-        pid = int((system.paths.runtime / 'daemon.pid').read_text())
-        os.kill(pid, signal.SIGUSR1)
-    except (OSError, ValueError):
-        raise SystemExit('displayd: daemon not running') from None
+    import daemon
+    if not daemon.reload(system):
+        raise SystemExit('displayd: daemon not running')
     return 0
 
 

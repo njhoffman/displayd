@@ -196,6 +196,20 @@ def stop(system):
     return _wait(system.paths, False)
 
 
+def reload(system):
+    """SIGUSR1 the running daemon (re-apply now). False when it is not running: the pid file outlives the
+    daemon, and SIGUSR1 kills a process that does not handle it, so only a pid behind the held lock is signalled."""
+    pid = running(system.paths)
+    if not pid:
+        return False
+    try:
+        os.kill(pid, signal.SIGUSR1)
+    except OSError as exc:
+        system.log(f'reload: {exc}')
+        return False
+    return True
+
+
 def main(system):
     with store.locked(system.paths.runtime / 'daemon.lock', blocking=False) as got:
         if not got:

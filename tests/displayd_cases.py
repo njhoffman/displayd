@@ -757,6 +757,25 @@ class Menu(Case):
         self.assertEqual(killed, [(4242, daemon.signal.SIGTERM)])
         self.assertIsNone(daemon.running(self.paths))
 
+    def test_reload_signals_only_a_running_daemon(self):
+        sysm = self.system()
+        killed = []
+        kill = daemon.os.kill
+        daemon.os.kill = lambda pid, sig: killed.append((pid, sig))
+        try:
+            # a pid file left behind by a daemon that is gone: its pid may belong to anything now
+            self.paths.runtime.mkdir(parents=True, exist_ok=True)
+            (self.paths.runtime / 'daemon.pid').write_text('4242\n')
+            self.assertFalse(daemon.reload(sysm))
+            self.assertEqual(killed, [])
+            with store.locked(self.paths.runtime / 'daemon.lock'):
+                self.assertTrue(daemon.reload(sysm))
+                (self.paths.runtime / 'daemon.pid').write_text('garbage\n')
+                self.assertFalse(daemon.reload(sysm))
+        finally:
+            daemon.os.kill = kill
+        self.assertEqual(killed, [(4242, daemon.signal.SIGUSR1)])
+
     def test_menu_enables_and_disables_the_daemon(self):
         sysm = self.system()
         self.x.plug('DP-3', DELL, DELL_MODES)

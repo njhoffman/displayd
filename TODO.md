@@ -41,7 +41,7 @@ Reviewed: 2026-11-10
   and only then turn the panel on; a `lid_closed_fallback` setting
   (`panel` | `wait`) would keep today's behavior available. Done in 0.6.0 as
   `general.lid_closed_wait` (seconds, 0 = old behavior).
-- [ ] **`displayd reload` can signal a stranger.** (p2) [bug] `cmd_reload`
+- [x] **`displayd reload` can signal a stranger.** (p2) [bug] `cmd_reload`
   (`bin/displayd`) reads `daemon.pid` and sends SIGUSR1 without checking the
   daemon runs; the pid file is never removed on exit, so after `displayd stop`
   or a crash a reused pid gets SIGUSR1, whose default action kills it. Use
