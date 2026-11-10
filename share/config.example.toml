@@ -27,6 +27,10 @@ lid_poll = 2.0
 # seconds it goes back to the laptop panel. Asked once per monitor set and
 # layout. 0 = never ask; bind `displayd rescue` to a key instead (or as well).
 confirm = 0
+# With the lid closed, losing the last external monitor (a hub or dock that
+# drops it for a moment) leaves the layout alone this many seconds, waiting
+# for one to come back, before turning the panel on. 0 = turn it on at once.
+lid_closed_wait = 30
 
 # Names for monitors in menus and notifications, by fingerprint
 # (`displayd monitors` lists them). Default: the EDID's model name.

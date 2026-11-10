@@ -366,9 +366,13 @@ class Evaluate(Case):
         self.assertEqual(sysm.state['last']['profile'], 'desk')
         self.assertTrue(sysm.notes[-1][3])  # notification has the Change button
         self.assertEqual(core.evaluate(sysm, ['lid']), 'unchanged')
-        # unplug while the lid is closed: the panel must come back
+        # unplug while the lid is closed: the panel comes back after the wait for an external
         self.x.unplug('DP-3')
-        self.assertEqual(core.evaluate(sysm, ['hotplug']), 'profile')
+        now = [100.0]
+        sysm.clock = lambda: now[0]
+        self.assertEqual(core.evaluate(sysm, ['hotplug']), 'waiting')
+        now[0] += 30
+        self.assertEqual(core.evaluate(sysm, ['lid-wait']), 'profile')
         self.assertEqual(set(self.x.active()), {'eDP-1'})
         self.assertIn('Disconnected: DEL U2719D (DP-3)', sysm.notes[-1][1])
 
@@ -429,6 +433,79 @@ class Evaluate(Case):
         self.assertTrue(sysm.config.errors)
         sysm = self.system('not = [toml')
         self.assertTrue(sysm.config.errors)
+        self.assertEqual(core.evaluate(sysm, ['start']), 'only display')
+
+
+
+class LidWait(Case):
+    """Lid closed and the last external gone: wait general.lid_closed_wait for one before lighting the panel."""
+
+    def docked(self, wait=None):
+        fp = xrandr.Output('x', True, edid=DELL).fingerprint
+        config = CONFIG.replace('{fp}', fp)
+        if wait is not None:
+            config = f'[general]\nlid_closed_wait = {wait}\n' + config.replace('[general]\n', '', 1)
+        sysm = self.system(config)
+        self.now = [1000.0]
+        sysm.clock = lambda: self.now[0]
+        self.x.plug('DP-3', DELL, DELL_MODES)
+        self.close_lid()
+        self.assertEqual(core.evaluate(sysm, ['lid']), 'profile')
+        self.assertEqual(set(self.x.active()), {'DP-3'})
+        self.applied = len(self.x.commands)
+        return sysm
+
+    def test_waits_then_turns_the_panel_on(self):
+        sysm = self.docked()
+        self.x.unplug('DP-3')
+        later = []
+        self.assertEqual(core.evaluate(sysm, ['hotplug'], True, None, later.append), 'waiting')
+        self.assertEqual(later, [30.0])
+        self.assertEqual(len(self.x.commands), self.applied)       # nothing touched X
+        self.now[0] += 12
+        self.assertEqual(core.evaluate(sysm, ['hotplug'], True, None, later.append), 'waiting')
+        self.assertEqual(later[-1], 18.0)                         # the deadline does not restart
+        self.now[0] += 18
+        self.assertEqual(core.evaluate(sysm, ['lid-wait']), 'profile')
+        self.assertEqual(set(self.x.active()), {'eDP-1'})
+
+    def test_external_back_in_time_keeps_the_panel_off(self):
+        sysm = self.docked()
+        self.x.unplug('DP-3')
+        self.assertEqual(core.evaluate(sysm, ['hotplug']), 'waiting')
+        self.now[0] += 10
+        self.x.outputs['DP-3']['connected'] = True
+        self.assertEqual(core.evaluate(sysm, ['hotplug']), 'unchanged')
+        self.assertEqual(set(self.x.active()), {'DP-3'})
+        self.assertEqual(len(self.x.commands), self.applied)
+        # a later drop gets a fresh wait
+        self.now[0] += 100
+        self.x.unplug('DP-3')
+        self.assertEqual(core.evaluate(sysm, ['hotplug']), 'waiting')
+
+    def test_opening_the_lid_force_or_zero_does_not_wait(self):
+        sysm = self.docked()
+        self.x.unplug('DP-3')
+        self.assertEqual(core.evaluate(sysm, ['hotplug']), 'waiting')
+        self.lid.write_text('state:      open\n')
+        self.assertEqual(core.evaluate(sysm, ['lid']), 'profile')
+        self.assertEqual(set(self.x.active()), {'eDP-1'})
+
+        self.x.outputs['DP-3']['connected'] = True
+        self.close_lid()
+        core.evaluate(sysm, ['lid'])
+        self.x.unplug('DP-3')
+        self.assertEqual(core.evaluate(sysm, ['force']), 'profile')
+        self.assertEqual(set(self.x.active()), {'eDP-1'})
+
+        sysm = self.docked(wait=0)
+        self.x.unplug('DP-3')
+        self.assertEqual(core.evaluate(sysm, ['hotplug']), 'profile')
+
+    def test_panel_already_on_does_not_wait(self):
+        sysm = self.system()
+        sysm.clock = lambda: 0.0
+        self.close_lid()
         self.assertEqual(core.evaluate(sysm, ['start']), 'only display')
 
 

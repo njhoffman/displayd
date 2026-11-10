@@ -5,6 +5,15 @@ versions follow [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-10
+
+### Changed
+
+- With the lid closed, losing the last external monitor no longer turns the panel on at once: displayd waits
+  `general.lid_closed_wait` seconds (default 30) for a monitor to come back, so a hub or dock that drops its
+  link for a moment leaves the layout (and the windows on it) alone. Opening the lid or `displayd apply` does not
+  wait; `lid_closed_wait = 0` restores the old behavior.
+
 ## [0.5.1] - 2026-11-02
 
 ### Added

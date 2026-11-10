@@ -122,6 +122,12 @@ class Daemon:
         self.menu_setup = setup.key
         self.menu = self.system.spawn([str(core.DISPLAYD), 'menu', '--new'])
 
+    def later(self, seconds):
+        """Evaluate again in SECONDS (a closed lid waiting for an external to come back)."""
+        timer = threading.Timer(seconds + 0.1, self.events.put, ('lid-wait',))
+        timer.daemon = True
+        timer.start()
+
     def run(self):
         signal.signal(signal.SIGUSR1, lambda *_: self.events.put('force'))
         signal.signal(signal.SIGTERM, lambda *_: self.exit())
@@ -143,7 +149,7 @@ class Daemon:
                 threading.Timer(2, self.events.put, ('recheck',)).start()
                 continue
             try:
-                result = core.evaluate(self.system, sorted(reasons), True, self.open_menu)
+                result = core.evaluate(self.system, sorted(reasons), True, self.open_menu, self.later)
                 self.log(f'{sorted(reasons)} -> {result}')
             except Exception as exc:  # keep the daemon alive through xrandr hiccups
                 self.log(f'evaluate failed: {exc!r}')

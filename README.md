@@ -14,7 +14,10 @@ suspend:
   config.toml as...**. Dismissing it applies `general.fallback` without
   remembering it.
 - Closing the lid with a monitor connected turns the laptop panel off;
-  opening it, or unplugging the monitor, turns it back on.
+  opening it turns it back on. Losing the last monitor with the lid closed
+  waits `general.lid_closed_wait` seconds (default 30) for one to come back,
+  so a hub that drops its link for a moment does not move the session to a
+  panel nobody can see; then the panel comes on.
 - Every switch shows a notification with a **Change layout** button.
 - Optionally (`general.confirm = 15`; off by default, it needs a mouse click),
   a layout that turns the laptop panel off while the lid is open asks **Keep

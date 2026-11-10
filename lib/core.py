@@ -6,6 +6,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import threading
+import time
 
 import layout as lay
 import store
@@ -67,6 +68,8 @@ class System:
         self.spawn = spawn or self._spawn
         self.log = log or store.Log(self.paths, echo)
         self._pending = None   # the 'setup|layout' pair a confirm notification is waiting on
+        self._lid_wait = None  # (setup key, monotonic deadline) while a closed lid waits for an external
+        self.clock = time.monotonic
         self.reload()
 
     def reload(self):
@@ -132,6 +135,30 @@ class System:
         if last.get('lid') and last['lid'] != setup.lid:
             lines.append(f'Lid {"closed" if setup.lid == "closed" else "opened"}')
         return lines
+
+    def lid_wait(self, setup, reasons=()):
+        """Seconds left before a closed panel is turned on because the last external went away, else 0.
+
+        Waits only while the lid is closed, no external is connected and the panel is off in X now: a hub
+        or dock that drops its monitor for a moment then gets it back without the session moving to a
+        panel nobody can see. 'force' (displayd apply) does not wait.
+        """
+        try:
+            grace = float(self.config.lid_closed_wait)
+        except (TypeError, ValueError):
+            grace = 0.0
+        if (grace <= 0 or 'force' in reasons or setup.lid != 'closed' or setup.externals
+                or not setup.internal or setup.internal in setup.active):
+            self._lid_wait = None
+            return 0.0
+        now = self.clock()
+        if not self._lid_wait or self._lid_wait[0] != setup.key:
+            self._lid_wait = (setup.key, now + grace)
+        left = self._lid_wait[1] - now
+        if left <= 0:
+            self._lid_wait = None
+            return 0.0
+        return left
 
     # -- choosing -------------------------------------------------------
     def profiles(self):
@@ -392,14 +419,18 @@ class System:
             self.spawn([str(DISPLAYD), 'menu'])
 
 
-def evaluate(system, reasons=(), interactive=True, open_menu=None):
-    """Bring the screen in line with what is connected. Returns what it did, for logs and tests."""
+def evaluate(system, reasons=(), interactive=True, open_menu=None, schedule=None):
+    """Bring the screen in line with what is connected. Returns what it did, for logs and tests.
+
+    SCHEDULE(seconds) asks the caller to evaluate again later (a closed lid waiting for an external).
+    """
     with store.locked(system.paths.runtime / 'apply.lock'):
         system.reload()
         setup = system.detect()
         if not setup.available:
             system.log('no connected outputs; leaving the screen alone')
             return 'none'
+        wait = system.lid_wait(setup, reasons)   # every evaluate, so an external that came back resets it
         hold = system.state['hold']
         if hold and ('force' in reasons or hold != setup.key):
             system.state['hold'] = ''
@@ -413,6 +444,11 @@ def evaluate(system, reasons=(), interactive=True, open_menu=None):
                 and last.get('enabled') == setup.active):
             system.log(f'unchanged ({", ".join(reasons) or "check"}): {setup.key}')
             return 'unchanged'
+        if wait > 0:
+            system.log(f'lid closed, no external: waiting {wait:.0f}s for one before turning on {setup.internal}')
+            if schedule:
+                schedule(wait)
+            return 'waiting'
         changes = system.changes(setup)
         layout, targets, why = system.choose(setup)
         if layout is None and interactive and open_menu:

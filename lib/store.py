@@ -62,6 +62,7 @@ class Config:
     debounce: float = 1.0
     lid_poll: float = 2.0
     confirm: float = 0.0                           # seconds to keep a layout that turns the open laptop off; 0 = never ask
+    lid_closed_wait: float = 30.0                  # closed lid, last external gone: seconds before the panel; 0 = at once
     monitors: dict = field(default_factory=dict)   # fingerprint -> label
     profiles: dict = field(default_factory=dict)   # name -> Layout, file order
     errors: list = field(default_factory=list)
@@ -79,7 +80,7 @@ def load_config(paths):
         return cfg
     general = data.get('general') or {}
     for key in ('internal', 'primary', 'fallback', 'scales', 'exec', 'notify', 'debounce', 'lid_poll',
-                'confirm'):
+                'confirm', 'lid_closed_wait'):
         if key in general:
             setattr(cfg, key, general[key])
     if isinstance(cfg.exec, str):
