@@ -73,6 +73,6 @@ Reviewed: 2026-11-10
   placement and adjust menus.
 - [x] **CI.** (p3) [test] Run `just test` and `just lint` on push (GitHub
   Actions: bats, shellcheck, pyflakes; the fake X needs nothing else).
-- [ ] **CLAUDE.md names the wrong xrandr query.** (p3) [docs] It says
+- [x] **CLAUDE.md names the wrong xrandr query.** (p3) [docs] It says
   `lib/xrandr.py` parses `xrandr --query --verbose`; the code runs
   `xrandr --query --prop`.

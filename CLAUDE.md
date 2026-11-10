@@ -13,7 +13,7 @@ Guidance for Claude Code in this repository.
 ## Layout
 
 - `bin/displayd` — CLI entry (argparse); puts `lib/` on `sys.path`.
-- `lib/xrandr.py` — `xrandr --query --verbose` parsing (outputs, modes, EDID
+- `lib/xrandr.py` — `xrandr --query --prop` parsing (outputs, modes, EDID
   fingerprints), `effective_size`, and the xrandr argument lists for a switch.
 - `lib/layout.py` — `Layout` / `OutputCfg`, TOML/JSON loading, matching a
   layout onto connected outputs (`resolve`), generated placements (`build`),
