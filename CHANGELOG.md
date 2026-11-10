@@ -5,6 +5,15 @@ versions follow [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-10
+
+### Changed
+
+- `displayd adjust` keeps alignment along a chain of screens: a screen beyond a neighbour that was re-aligned
+  (e.g. the lower Zenbook Duo panel under the upper one, under a monitor) now follows that neighbour instead of
+  staying where it was. A screen touching two others lines up with the one it is aligned to (start, centre or
+  end) rather than whichever was placed first.
+
 ## [0.6.5] - 2026-11-10
 
 ### Fixed

@@ -264,15 +264,40 @@ def _realign(start, size, ref, ref_size, new_ref_size, fallback):
     return fallback
 
 
+def _follow(rect, ref, new_ref):
+    """((x, y), aligned) for RECT touching REF's edge (spans overlapping) when REF moves and resizes to NEW_REF;
+    None when it does not touch. Beyond the right (bottom) edge it stays flush with the new edge, before the left
+    (top) one it moves with REF; along the shared edge it keeps its alignment (_realign: ALIGNED) or else moves
+    with REF."""
+    cx, cy, cw, ch = rect
+    rx, ry, rw, rh = ref
+    nrx, nry, nrw, nrh = new_ref
+    dx, dy = nrx - rx, nry - ry
+    beside = cy < ry + rh and cy + ch > ry
+    stacked = cx < rx + rw and cx + cw > rx
+    if stacked and (cy == ry + rh or cy + ch == ry):
+        ny = nry + nrh if cy == ry + rh else cy + dy
+        nx = _realign(cx, cw, rx, rw, nrw, None)
+        return ((cx if nx is None else nx) + dx, ny), nx is not None
+    if beside and (cx == rx + rw or cx + cw == rx):
+        nx = nrx + nrw if cx == rx + rw else cx + dx
+        ny = _realign(cy, ch, ry, rh, nrh, None)
+        return (nx, (cy if ny is None else ny) + dy), ny is not None
+    return None
+
+
 def resize(layout, port, available, mode=None, scale=None, name=None):
     """Copy of LAYOUT (resolved onto AVAILABLE, so keyed by port) with PORT at MODE ('WxH') and SCALE, the others moved so they stay adjacent.
 
-    Outputs that started at or beyond PORT's right (bottom) edge shift by the
-    change in its width (height). One touching PORT above or below (left or
-    right) also keeps how it lined up with PORT along that edge: start, centre
-    or end. An output covering exactly PORT's area is its mirror and follows it
-    through scale_from. Positions are then moved so the screen starts at 0x0.
-    A changed mode drops the pinned rate.
+    Placement spreads outward from PORT: a screen touching one already placed
+    (PORT first, then each screen as it is placed) stays flush with that
+    screen's new edge and keeps how it lined up with it along the edge: start,
+    centre or end. So a screen beyond a re-centred neighbour follows the
+    neighbour. Screens touching none shift by the change in PORT's width
+    (height) when they start at or beyond its right (bottom) edge. An output
+    covering exactly PORT's area is its mirror and follows it through
+    scale_from. Positions are then moved so the screen starts at 0x0. A changed
+    mode drops the pinned rate.
     """
     targets = resolve(layout, available)
     if targets is None or port not in targets or targets[port].off:
@@ -284,8 +309,8 @@ def resize(layout, port, available, mode=None, scale=None, name=None):
     if new_mode is None:
         raise LayoutError(f'{port} has no mode {mode}')
     x, y, w, h = _rect(old, out.mode(old.mode))
-    twins = [p for p, c in targets.items() if p != port and not c.off and
-             _rect(c, available[p].mode(c.mode)) == (x, y, w, h)]
+    rects = {p: _rect(c, available[p].mode(c.mode)) for p, c in targets.items() if not c.off}
+    twins = [p for p, r in rects.items() if p != port and r == (x, y, w, h)]
     changed = cfgs[port]
     if new_mode.size != old.mode:
         changed.mode, changed.rate = new_mode.size, 0.0
@@ -293,21 +318,39 @@ def resize(layout, port, available, mode=None, scale=None, name=None):
         changed.scale, changed.scale_from = float(scale), ''
     nw, nh = effective_size(new_mode.width, new_mode.height, changed.rotate, changed.scale)
     dw, dh = nw - w, nh - h
-    for p, c in targets.items():
-        if p == port or c.off:
+    for p in twins:
+        cfgs[p].pos, cfgs[p].scale, cfgs[p].scale_from = changed.pos, 1.0, f'{nw}x{nh}'
+    # a screen that keeps an alignment with a placed neighbour is placed by it; one that only moves along with a
+    # neighbour waits until nothing aligned is left, so a neighbour it lines up with wins
+    placed = {port: (x, y, nw, nh)}
+    queue, loose = [port], {}
+    while queue:
+        ref = queue.pop(0)
+        for p, rect in rects.items():
+            if p in placed or p in twins:
+                continue
+            follow = _follow(rect, rects[ref], placed[ref])
+            if follow is None:
+                continue
+            (fx, fy), aligned = follow
+            if aligned:
+                placed[p] = (fx, fy, rect[2], rect[3])
+                loose.pop(p, None)
+                queue.append(p)
+            else:
+                loose.setdefault(p, (fx, fy, rect[2], rect[3]))
+        if not queue and loose:
+            placed.update(loose)
+            queue, loose = list(loose), {}
+    for p, (cx, cy, cw, ch) in rects.items():
+        if p == port or p in twins:
             continue
-        cfg = cfgs[p]
-        if p in twins:
-            cfg.pos, cfg.scale, cfg.scale_from = changed.pos, 1.0, f'{nw}x{nh}'
-            continue
-        cx, cy, cw, ch = _rect(c, available[p].mode(c.mode))
-        nx = cx + dw if cx >= x + w else cx
-        ny = cy + dh if cy >= y + h else cy
-        if cy + ch == y or cy == y + h:
-            nx = _realign(cx, cw, x, w, nw, nx)
-        elif cx + cw == x or cx == x + w:
-            ny = _realign(cy, ch, y, h, nh, ny)
-        cfg.pos = f'{nx}x{ny}'
+        if p in placed:
+            nx, ny = placed[p][:2]
+        else:
+            nx = cx + dw if cx >= x + w else cx
+            ny = cy + dh if cy >= y + h else cy
+        cfgs[p].pos = f'{nx}x{ny}'
     on = [c for c in cfgs.values() if not c.off]
     mx = min(int(c.pos.split('x')[0]) for c in on)
     my = min(int(c.pos.split('x')[1]) for c in on)

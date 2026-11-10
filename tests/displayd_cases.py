@@ -1010,6 +1010,39 @@ class Adjust(Case):
         self.assertEqual(menu.adjust(sysm, Unplugging(1, '1920x1080', '1  ', 'Use once')), 'stale')
         self.assertEqual(len(self.x.commands), count)
 
+    def test_resize_carries_alignment_down_a_chain(self):
+        """A screen beyond a re-aligned neighbour follows that neighbour, not just the resized one."""
+        sysm = self.system()
+        fhd = [('1920x1080', [60.0], True)]
+        self.x.plug('DP-3', DELL, DELL_MODES)
+        self.x.plug('eDP-2', edid('LGD', '', 0x0620), LAPTOP_MODES)
+        avail = sysm.detect().available
+        # Zenbook Duo under a monitor: DP-3 on top, eDP-1 centred below it, eDP-2 centred below eDP-1
+        duo = lay.from_dict('duo', {'outputs': {
+            'DP-3': {'mode': '2560x1440', 'pos': '0x0', 'primary': True},
+            'eDP-1': {'mode': '1920x1080', 'pos': '320x1440'},
+            'eDP-2': {'mode': '1920x1080', 'pos': '320x2520'}}})
+        small = lay.resize(duo, 'DP-3', avail, '1920x1080', 1.0)
+        self.assertEqual({p: c.pos for p, c in small.outputs.items()},
+                         {'DP-3': '0x0', 'eDP-1': '0x1080', 'eDP-2': '0x2160'})
+        back = lay.resize(small, 'DP-3', avail, '2560x1440', 1.0)
+        self.assertEqual({p: c.pos for p, c in back.outputs.items()},
+                         {'DP-3': '0x0', 'eDP-1': '320x1440', 'eDP-2': '320x2520'})
+
+        # right, then down: HDMI-1 centred right of DP-3, HDMI-2 below HDMI-1 and flush with its left edge
+        self.x.unplug('eDP-2')
+        self.x.plug('HDMI-1', edid('GSM', 'LG A', serial=2), fhd)
+        self.x.plug('HDMI-2', edid('GSM', 'LG B', serial=3), fhd)
+        self.close_lid()
+        avail = sysm.detect().available
+        row = lay.from_dict('row', {'outputs': {
+            'DP-3': {'mode': '2560x1440', 'pos': '0x0', 'primary': True},
+            'HDMI-1': {'mode': '1920x1080', 'pos': '2560x180'},
+            'HDMI-2': {'mode': '1920x1080', 'pos': '2560x1260'}}})
+        small = lay.resize(row, 'DP-3', avail, '1920x1080', 1.0)
+        self.assertEqual({p: c.pos for p, c in small.outputs.items()},
+                         {'DP-3': '0x0', 'HDMI-1': '1920x0', 'HDMI-2': '1920x1080'})
+
     def test_resize_layouts(self):
         sysm = self.system()
         self.x.plug('DP-3', DELL, DELL_MODES)

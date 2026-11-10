@@ -32,7 +32,8 @@ suspend:
   hotplug or the lid until it is enabled again or the next login.
 - `displayd adjust` (also a main menu entry, **Adjust a monitor**)
   changes the resolution and scale of one monitor in the layout on screen, once or as the default; the other monitors move so the
-  screens still touch and keep their alignment (centred, start or end).
+  screens still touch and keep their alignment (centred, start or end), also a
+  screen beyond a neighbour that moved (a monitor above both Zenbook Duo panels).
 
 ```sh
 displayd status                  # connected setup, applied, default, fitting profiles

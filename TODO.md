@@ -14,7 +14,7 @@ Reviewed: 2026-11-10
   panel. Today placements treat only the first internal panel as "the laptop";
   `general.internal` should name both panels, and profiles cover laptop only,
   both screens, and both plus an external monitor.
-- [ ] **Re-centre outputs past the resized one.** (p3) [feature]
+- [x] **Re-centre outputs past the resized one.** (p3) [feature]
   `layout.resize` keeps a neighbour's alignment only for outputs touching the
   resized one; a third monitor beyond a re-aligned neighbour does not follow
   it. Rare with two screens; matters for the Duo plus an external.
