@@ -5,6 +5,13 @@ versions follow [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-11-10
+
+### Added
+
+- CI: GitHub Actions runs `just lint` and `just test` on every push and pull request, on Python 3.11 (the
+  minimum) and 3.13.
+
 ## [0.6.1] - 2026-11-10
 
 ### Fixed

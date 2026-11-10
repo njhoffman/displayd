@@ -116,6 +116,8 @@ Its log is `/var/log/displayd-greeter.log`.
 
 `just test`: the Python cases (`tests/displayd_cases.py`) against a fake X
 and stub rofi, and the greeter against a stub xrandr (`tests/displayd.bats`).
+GitHub Actions runs `just lint` and `just test` on every push, on Python 3.11
+and 3.13 (`.github/workflows/test.yml`).
 
 ## License
 
