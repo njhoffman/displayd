@@ -812,6 +812,32 @@ class Menu(Case):
         self.assertEqual(killed, [(4242, daemon.signal.SIGTERM)])
         self.assertIsNone(daemon.running(self.paths))
 
+    def test_udevadm_that_keeps_dying_falls_back_to_polling(self):
+        sysm = self.system()
+        d = daemon.Daemon(sysm)
+        started, polled, clock = [], [], [0.0]
+
+        class Dying:
+            def __init__(self, cmd, **kw):
+                started.append(cmd)
+                self.stdout, self.returncode = iter(['UDEV  [1] change   /devices/drm/card1 (drm)\n']), None
+
+            def wait(self):
+                clock[0] += 1 if len(started) != 2 else 60   # the second one ran a minute
+                self.returncode = 1
+
+        saved = daemon.subprocess.Popen, daemon.time.sleep, daemon.time.monotonic
+        daemon.subprocess.Popen, daemon.time.sleep = Dying, lambda s: None
+        daemon.time.monotonic = lambda: clock[0]
+        d.poll_drm = lambda: polled.append(True)
+        try:
+            d.watch_udev()
+        finally:
+            daemon.subprocess.Popen, daemon.time.sleep, daemon.time.monotonic = saved
+        # quick, long (resets the count), then three quick in a row
+        self.assertEqual((len(started), polled), (5, [True]))
+        self.assertEqual(d.events.qsize(), 5)
+
     def test_reload_signals_only_a_running_daemon(self):
         sysm = self.system()
         killed = []

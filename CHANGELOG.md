@@ -5,6 +5,14 @@ versions follow [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-11-10
+
+### Fixed
+
+- A `udevadm monitor` that starts but dies at once (no netlink access, a broken install) was restarted every 5s
+  forever, and no hotplug was ever seen. After three exits within 5s of starting in a row, the daemon polls
+  `/sys/class/drm/*/status` instead, as it already did when `udevadm` is missing.
+
 ## [0.6.3] - 2026-11-10
 
 ### Fixed

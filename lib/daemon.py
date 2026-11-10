@@ -14,6 +14,7 @@ import store
 
 ACPID_SOCKETS = ('/run/acpid.socket', '/var/run/acpid.socket')
 DRM_STATUS = '/sys/class/drm/card*-*/status'
+QUICK_EXIT, QUICK_EXITS = 5, 3   # udevadm monitor dying this fast this often in a row: poll instead
 
 
 class Daemon:
@@ -27,8 +28,11 @@ class Daemon:
 
     # -- event sources --------------------------------------------------
     def watch_udev(self):
-        """drm change events; polls connector status files when udevadm is unusable."""
+        """drm change events; polls connector status files when udevadm is unusable: it cannot start, or it
+        exits within QUICK_EXIT seconds QUICK_EXITS times in a row (no netlink access, a broken install)."""
+        quick = 0
         while True:
+            started = time.monotonic()
             try:
                 proc = self.udev = subprocess.Popen(['udevadm', 'monitor', '--udev', '--subsystem-match=drm'],
                                                     stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
@@ -41,6 +45,12 @@ class Daemon:
                 if line.startswith('UDEV') and ' change ' in f' {line} ':
                     self.events.put('hotplug')
             proc.wait()
+            quick = quick + 1 if time.monotonic() - started < QUICK_EXIT else 0
+            if quick >= QUICK_EXITS:
+                self.log(f'udevadm monitor exited ({proc.returncode}) {quick} times within {QUICK_EXIT}s of starting; '
+                         f'polling {DRM_STATUS}')
+                self.poll_drm()
+                return
             self.log(f'udevadm monitor exited ({proc.returncode}); restarting in 5s')
             time.sleep(5)
 

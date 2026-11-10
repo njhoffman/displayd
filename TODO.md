@@ -53,7 +53,7 @@ Reviewed: 2026-11-10
   `reload()`s, so it saves the state read when the command started, losing
   anything the daemon wrote meanwhile (`confirmed`, `hold`, labels). Take the
   lock and `reload()` first in all three, as `cmd_rescue` does.
-- [ ] **A udevadm that keeps failing means no hotplug at all.** (p3) [bug]
+- [x] **A udevadm that keeps failing means no hotplug at all.** (p3) [bug]
   `Daemon.watch_udev` falls back to polling `/sys/class/drm` only when
   `udevadm` cannot be started; one that starts and exits at once (no netlink
   access, a broken install) is restarted every 5s forever and no hotplug is
